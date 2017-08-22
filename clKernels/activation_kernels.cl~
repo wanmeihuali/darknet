@@ -139,21 +139,16 @@ float gradient_kernel(float x, ACTIVATION a)
 
 __kernel void activate_array_kernel(__global float *x, int x_offset, int n, ACTIVATION a)
 {
-
     int i = get_global_id(0);
-    if (i<n) {
-        x = x + x_offset;
-        x[i] = activate_kernel(x[i], a);
-    }
+    x = x + x_offset;
+    if (i<n) x[i] = activate_kernel(x[i], a);
 }
 
 __kernel void gradient_array_kernel(__global float *x, int x_offset, int n, ACTIVATION a, __global float *delta, int delta_offset)
 {
     int i = get_global_id(0);
-    if (i<n) {
     x = x + x_offset;
     delta = delta + delta_offset;
     delta[i] *= gradient_kernel(x[i], a);
-    }
 }
 

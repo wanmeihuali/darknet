@@ -967,12 +967,12 @@ void softmax_device(__global float *input, int n, float temp, int stride, __glob
 }
 
 
-__kernel void softmax_tree_kernel(__global float *input, int input_off, int spatial, int batch, int stride, float temp, __global float *output,int output_off, int groups, __global int *group_size, int group_size_off, __global int *group_offset, int group_offset_off)
+__kernel void softmax_tree_kernel(__global float *input, int input_off, int spatial, int batch, int stride, float temp, __global float *output,int output_off, int groups, __global int *group_size, int group_size_off, __global int *group_size_offset, int group_size_offset_off)
 {
     input+=input_off;
     output+=output_off;
     group_size+=group_size_off;
-    group_offset+=group_offset_off;
+    group_size_offset+=group_size_offset_off;
     int id = get_global_id(0);
     if (id >= spatial*batch*groups) return;
     int s = id % spatial;
