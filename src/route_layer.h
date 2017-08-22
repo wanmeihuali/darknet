@@ -2,6 +2,8 @@
 #define ROUTE_LAYER_H
 #include "network.h"
 #include "layer.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 typedef layer route_layer;
 
@@ -10,9 +12,13 @@ void forward_route_layer(const route_layer l, network net);
 void backward_route_layer(const route_layer l, network net);
 void resize_route_layer(route_layer *l, network *net);
 
-#ifdef GPU
+#ifdef CUDA
 void forward_route_layer_gpu(const route_layer l, network net);
 void backward_route_layer_gpu(const route_layer l, network net);
+#endif
+#ifdef OPENCL
+void forward_route_layer_gpu(route_layer l, network net);
+void backward_route_layer_gpu(route_layer l, network net);
 #endif
 
 #endif

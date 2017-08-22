@@ -1,4 +1,3 @@
-
 #ifndef RNN_LAYER_H
 #define RNN_LAYER_H
 
@@ -6,6 +5,8 @@
 #include "layer.h"
 #include "network.h"
 #define USET
+#include "cuda.h"
+#include "openclutils.h"
 
 layer make_rnn_layer(int batch, int inputs, int outputs, int steps, ACTIVATION activation, int batch_normalize, int adam);
 

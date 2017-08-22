@@ -1,5 +1,6 @@
 #include "shortcut_layer.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include "blas.h"
 #include "activations.h"
 
@@ -28,13 +29,17 @@ layer make_shortcut_layer(int batch, int index, int w, int h, int c, int w2, int
 
     l.forward = forward_shortcut_layer;
     l.backward = backward_shortcut_layer;
-    #ifdef GPU
+#ifdef GPU
     l.forward_gpu = forward_shortcut_layer_gpu;
     l.backward_gpu = backward_shortcut_layer_gpu;
-
+#ifdef CUDA
     l.delta_gpu =  cuda_make_array(l.delta, l.outputs*batch);
     l.output_gpu = cuda_make_array(l.output, l.outputs*batch);
-    #endif
+#elif defined OPENCL
+    l.delta_gpu =  cl_make_array(l.delta, l.outputs*batch);
+    l.output_gpu = cl_make_array(l.output, l.outputs*batch);
+#endif
+#endif // GPU
     return l;
 }
 

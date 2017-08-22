@@ -4,6 +4,8 @@
 #include "activations.h"
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 layer make_activation_layer(int batch, int inputs, ACTIVATION activation);
 

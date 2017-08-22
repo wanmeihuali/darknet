@@ -17,7 +17,7 @@ float abs_mean(float *x, int n)
 void calculate_loss(float *output, float *delta, int n, float thresh)
 {
     int i;
-    float mean = mean_array(output, n); 
+    float mean = mean_array(output, n);
     float var = variance_array(output, n);
     for(i = 0; i < n; ++i){
         if(delta[i] > mean + thresh*sqrt(var)) delta[i] = output[i];
@@ -45,7 +45,7 @@ void optimize_picture(network *net, image orig, int max_layer, float scale, floa
 
     image delta = make_image(im.w, im.h, im.c);
 
-#ifdef GPU
+#ifdef CUDA
     net->delta_gpu = cuda_make_array(delta.data, im.w*im.h*im.c);
     cuda_push_array(net->input_gpu, im.data, net->inputs);
 
@@ -61,6 +61,22 @@ void optimize_picture(network *net, image orig, int max_layer, float scale, floa
     cuda_pull_array(net->delta_gpu, delta.data, im.w*im.h*im.c);
     cuda_free(net->delta_gpu);
     net->delta_gpu = 0;
+#elif defined OPENCL
+    net->delta_gpu = cl_make_array(delta.data, im.w*im.h*im.c);
+    cl_write_array(net->input_gpu, im.data, net->inputs);
+
+    forward_network_gpu(*net);
+    copy_gpu(last.outputs, last.output_gpu, 1, last.delta_gpu, 1);
+
+    cl_read_array(last.delta_gpu, last.delta, last.outputs);
+    calculate_loss(last.delta, last.delta, last.outputs, thresh);
+    cl_write_array(last.delta_gpu, last.delta, last.outputs);
+
+    backward_network_gpu(*net);
+
+    cl_read_array(net->delta_gpu, delta.data, im.w*im.h*im.c);
+    cl_free(net->delta_gpu);
+    net->delta_gpu.exist = false;
 #else
     net->input = im.data;
     net->delta = delta.data;
@@ -133,7 +149,7 @@ void reconstruct_picture(network net, float *features, image recon, image update
     for (iter = 0; iter < iters; ++iter) {
         image delta = make_image(recon.w, recon.h, recon.c);
 
-#ifdef GPU
+#ifdef CUDA
         layer l = get_network_output_layer(net);
         cuda_push_array(net.input_gpu, recon.data, recon.w*recon.h*recon.c);
         //cuda_push_array(net.truth_gpu, features, net.truths);
@@ -147,6 +163,20 @@ void reconstruct_picture(network net, float *features, image recon, image update
         cuda_pull_array(net.delta_gpu, delta.data, delta.w*delta.h*delta.c);
 
         cuda_free(net.delta_gpu);
+#elif defined OPENCL
+        layer l = get_network_output_layer(net);
+        cl_write_array(net.input_gpu, recon.data, recon.w*recon.h*recon.c);
+        //cl_write_array(net.truth_gpu, features, net.truths);
+        net.delta_gpu = cl_make_array(delta.data, delta.w*delta.h*delta.c);
+
+        forward_network_gpu(net);
+        cl_write_array(l.delta_gpu, features, l.outputs);
+        axpy_gpu(l.outputs, -1, l.output_gpu, 1, l.delta_gpu, 1);
+        backward_network_gpu(net);
+
+        cl_read_array(net.delta_gpu, delta.data, delta.w*delta.h*delta.c);
+
+        cl_free(net.delta_gpu);
 #else
         net.input = recon.data;
         net.delta = delta.data;
@@ -238,7 +268,7 @@ void run_lsd(int argc, char **argv)
     for(e = 0; e < rounds; ++e){
         fprintf(stderr, "Iteration: ");
         fflush(stderr);
-        for(n = 0; n < iters; ++n){  
+        for(n = 0; n < iters; ++n){
             fprintf(stderr, "%d, ", n);
             fflush(stderr);
             if(reconstruct){
@@ -366,7 +396,7 @@ void run_nightmare(int argc, char **argv)
     for(e = 0; e < rounds; ++e){
         fprintf(stderr, "Iteration: ");
         fflush(stderr);
-        for(n = 0; n < iters; ++n){  
+        for(n = 0; n < iters; ++n){
             fprintf(stderr, "%d, ", n);
             fflush(stderr);
             if(reconstruct){

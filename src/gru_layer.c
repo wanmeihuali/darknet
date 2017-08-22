@@ -1,3 +1,4 @@
+//OPENCL done
 #include "gru_layer.h"
 #include "connected_layer.h"
 #include "utils.h"
@@ -18,11 +19,16 @@ static void increment_layer(layer *l, int steps)
     l->x += num;
     l->x_norm += num;
 
-#ifdef GPU
+#ifdef CUDA
     l->output_gpu += num;
     l->delta_gpu += num;
     l->x_gpu += num;
     l->x_norm_gpu += num;
+#elif defined OPENCL
+    (l->output_gpu).offset += num;
+    (l->delta_gpu).offset += num;
+    (l->x_gpu).offset += num;
+    (l->x_norm_gpu).offset += num;
 #endif
 }
 
@@ -91,6 +97,7 @@ layer make_gru_layer(int batch, int inputs, int outputs, int steps, int batch_no
     l.forward_gpu = forward_gru_layer_gpu;
     l.backward_gpu = backward_gru_layer_gpu;
     l.update_gpu = update_gru_layer_gpu;
+#ifdef CUDA
 
     l.forgot_state_gpu = cuda_make_array(0, batch*outputs);
     l.forgot_delta_gpu = cuda_make_array(0, batch*outputs);
@@ -103,14 +110,26 @@ layer make_gru_layer(int batch, int inputs, int outputs, int steps, int batch_no
     l.h_gpu = cuda_make_array(0, batch*outputs);
 
 #ifdef CUDNN
-    cudnnSetTensor4dDescriptor(l.uz->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.uz->out_c, l.uz->out_h, l.uz->out_w); 
-    cudnnSetTensor4dDescriptor(l.uh->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.uh->out_c, l.uh->out_h, l.uh->out_w); 
-    cudnnSetTensor4dDescriptor(l.ur->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.ur->out_c, l.ur->out_h, l.ur->out_w); 
-    cudnnSetTensor4dDescriptor(l.wz->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wz->out_c, l.wz->out_h, l.wz->out_w); 
-    cudnnSetTensor4dDescriptor(l.wh->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wh->out_c, l.wh->out_h, l.wh->out_w); 
-    cudnnSetTensor4dDescriptor(l.wr->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wr->out_c, l.wr->out_h, l.wr->out_w); 
+    cudnnSetTensor4dDescriptor(l.uz->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.uz->out_c, l.uz->out_h, l.uz->out_w);
+    cudnnSetTensor4dDescriptor(l.uh->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.uh->out_c, l.uh->out_h, l.uh->out_w);
+    cudnnSetTensor4dDescriptor(l.ur->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.ur->out_c, l.ur->out_h, l.ur->out_w);
+    cudnnSetTensor4dDescriptor(l.wz->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wz->out_c, l.wz->out_h, l.wz->out_w);
+    cudnnSetTensor4dDescriptor(l.wh->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wh->out_c, l.wh->out_h, l.wh->out_w);
+    cudnnSetTensor4dDescriptor(l.wr->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.wr->out_c, l.wr->out_h, l.wr->out_w);
 #endif
-#endif
+#endif // CUDA
+#ifdef OPENCL
+    l.forgot_state_gpu = cl_make_array(0, batch*outputs);
+    l.forgot_delta_gpu = cl_make_array(0, batch*outputs);
+    l.prev_state_gpu = cl_make_array(0, batch*outputs);
+    l.state_gpu = cl_make_array(0, batch*outputs);
+    l.output_gpu = cl_make_array(0, batch*outputs*steps);
+    l.delta_gpu = cl_make_array(0, batch*outputs*steps);
+    l.r_gpu = cl_make_array(0, batch*outputs);
+    l.z_gpu = cl_make_array(0, batch*outputs);
+    l.h_gpu = cl_make_array(0, batch*outputs);
+#endif // OPENCL
+#endif //GPU
 
     return l;
 }
@@ -145,12 +164,14 @@ void forward_gru_layer(layer l, network net)
     fill_cpu(l.outputs * l.batch * l.steps, 0, wz.delta, 1);
     fill_cpu(l.outputs * l.batch * l.steps, 0, wr.delta, 1);
     fill_cpu(l.outputs * l.batch * l.steps, 0, wh.delta, 1);
-    if(net.train) {
+    if(net.train)
+    {
         fill_cpu(l.outputs * l.batch * l.steps, 0, l.delta, 1);
         copy_cpu(l.outputs*l.batch, l.state, 1, l.prev_state, 1);
     }
 
-    for (i = 0; i < l.steps; ++i) {
+    for (i = 0; i < l.steps; ++i)
+    {
         s.input = l.state;
         forward_connected_layer(wz, s);
         forward_connected_layer(wr, s);
@@ -179,9 +200,12 @@ void forward_gru_layer(layer l, network net)
         copy_cpu(l.outputs*l.batch, uh.output, 1, l.h_cpu, 1);
         axpy_cpu(l.outputs*l.batch, 1, wh.output, 1, l.h_cpu, 1);
 
-        if(l.tanh){
+        if(l.tanh)
+        {
             activate_array(l.h_cpu, l.outputs*l.batch, TANH);
-        } else {
+        }
+        else
+        {
             activate_array(l.h_cpu, l.outputs*l.batch, LOGISTIC);
         }
 
@@ -225,6 +249,7 @@ void update_gru_layer_gpu(layer l, update_args a)
     update_connected_layer_gpu(*(l.wh), a);
 }
 
+
 void forward_gru_layer_gpu(layer l, network net)
 {
     network s = {0};
@@ -245,12 +270,14 @@ void forward_gru_layer_gpu(layer l, network net)
     fill_gpu(l.outputs * l.batch * l.steps, 0, wz.delta_gpu, 1);
     fill_gpu(l.outputs * l.batch * l.steps, 0, wr.delta_gpu, 1);
     fill_gpu(l.outputs * l.batch * l.steps, 0, wh.delta_gpu, 1);
-    if(net.train) {
+    if(net.train)
+    {
         fill_gpu(l.outputs * l.batch * l.steps, 0, l.delta_gpu, 1);
         copy_gpu(l.outputs*l.batch, l.state_gpu, 1, l.prev_state_gpu, 1);
     }
 
-    for (i = 0; i < l.steps; ++i) {
+    for (i = 0; i < l.steps; ++i)
+    {
         s.input_gpu = l.state_gpu;
         forward_connected_layer_gpu(wz, s);
         forward_connected_layer_gpu(wr, s);
@@ -278,17 +305,24 @@ void forward_gru_layer_gpu(layer l, network net)
         copy_gpu(l.outputs*l.batch, uh.output_gpu, 1, l.h_gpu, 1);
         axpy_gpu(l.outputs*l.batch, 1, wh.output_gpu, 1, l.h_gpu, 1);
 
-        if(l.tanh){
+        if(l.tanh)
+        {
             activate_array_gpu(l.h_gpu, l.outputs*l.batch, TANH);
-        } else {
+        }
+        else
+        {
             activate_array_gpu(l.h_gpu, l.outputs*l.batch, LOGISTIC);
         }
 
         weighted_sum_gpu(l.state_gpu, l.h_gpu, l.z_gpu, l.outputs*l.batch, l.output_gpu);
         copy_gpu(l.outputs*l.batch, l.output_gpu, 1, l.state_gpu, 1);
-
+#ifdef CUDA
         net.input_gpu += l.inputs*l.batch;
         l.output_gpu += l.outputs*l.batch;
+#elif defined OPENCL
+        net.input_gpu.offset += l.inputs*l.batch;
+        l.output_gpu.offset += l.outputs*l.batch;
+#endif
         increment_layer(&uz, 1);
         increment_layer(&ur, 1);
         increment_layer(&uh, 1);
@@ -319,16 +353,43 @@ void backward_gru_layer_gpu(layer l, network net)
     increment_layer(&wz, l.steps - 1);
     increment_layer(&wr, l.steps - 1);
     increment_layer(&wh, l.steps - 1);
-
+#ifdef CUDA
     net.input_gpu += l.inputs*l.batch*(l.steps-1);
     if(net.delta_gpu) net.delta_gpu += l.inputs*l.batch*(l.steps-1);
     l.output_gpu += l.outputs*l.batch*(l.steps-1);
     l.delta_gpu += l.outputs*l.batch*(l.steps-1);
     float *end_state = l.output_gpu;
-    for (i = l.steps-1; i >= 0; --i) {
-        if(i != 0) copy_gpu(l.outputs*l.batch, l.output_gpu - l.outputs*l.batch, 1, l.state_gpu, 1);
+#elif defined OPENCL
+    net.input_gpu.offset += l.inputs*l.batch*(l.steps-1);
+    if(net.delta_gpu.exist) net.delta_gpu.offset += l.inputs*l.batch*(l.steps-1);
+    l.output_gpu.offset += l.outputs*l.batch*(l.steps-1);
+    l.delta_gpu.offset += l.outputs*l.batch*(l.steps-1);
+    cl_mem_with_offset end_state = l.output_gpu;
+#endif
+
+    for (i = l.steps-1; i >= 0; --i)
+    {
+        if (i != 0) {
+#ifdef CUDA
+            copy_gpu(l.outputs*l.batch, l.output_gpu - l.outputs*l.batch, 1, l.state_gpu, 1);
+#elif defined OPENCL
+            l.output_gpu.offset -= l.outputs*l.batch;
+            copy_gpu(l.outputs*l.batch, l.output_gpu, 1, l.state_gpu, 1);
+            l.output_gpu.offset += l.outputs*l.batch;
+#endif
+        }
         else copy_gpu(l.outputs*l.batch, l.prev_state_gpu, 1, l.state_gpu, 1);
+#ifdef CUDA
         float *prev_delta_gpu = (i == 0) ? 0 : l.delta_gpu - l.outputs*l.batch;
+#elif defined OPENCL
+        cl_mem_with_offset prev_delta_gpu;
+        if (i == 0)
+            {prev_delta_gpu.exist = false;}
+        else {
+            prev_delta_gpu = l.delta_gpu;
+            prev_delta_gpu.offset -= l.outputs*l.batch;
+        }
+#endif
 
         copy_gpu(l.outputs*l.batch, uz.output_gpu, 1, l.z_gpu, 1);
         axpy_gpu(l.outputs*l.batch, 1, wz.output_gpu, 1, l.z_gpu, 1);
@@ -342,17 +403,23 @@ void backward_gru_layer_gpu(layer l, network net)
         copy_gpu(l.outputs*l.batch, uh.output_gpu, 1, l.h_gpu, 1);
         axpy_gpu(l.outputs*l.batch, 1, wh.output_gpu, 1, l.h_gpu, 1);
 
-        if(l.tanh){
+        if(l.tanh)
+        {
             activate_array_gpu(l.h_gpu, l.outputs*l.batch, TANH);
-        } else {
+        }
+        else
+        {
             activate_array_gpu(l.h_gpu, l.outputs*l.batch, LOGISTIC);
         }
 
         weighted_delta_gpu(l.state_gpu, l.h_gpu, l.z_gpu, prev_delta_gpu, uh.delta_gpu, uz.delta_gpu, l.outputs*l.batch, l.delta_gpu);
 
-        if(l.tanh){
+        if(l.tanh)
+        {
             gradient_array_gpu(l.h_gpu, l.outputs*l.batch, TANH, uh.delta_gpu);
-        } else {
+        }
+        else
+        {
             gradient_array_gpu(l.h_gpu, l.outputs*l.batch, LOGISTIC, uh.delta_gpu);
         }
 
@@ -366,7 +433,11 @@ void backward_gru_layer_gpu(layer l, network net)
         s.delta_gpu = l.forgot_delta_gpu;
 
         backward_connected_layer_gpu(wh, s);
+#ifdef CUDA
         if(prev_delta_gpu) mult_add_into_gpu(l.outputs*l.batch, l.forgot_delta_gpu, l.r_gpu, prev_delta_gpu);
+#elif defined OPENCL
+        if(prev_delta_gpu.exist) mult_add_into_gpu(l.outputs*l.batch, l.forgot_delta_gpu, l.r_gpu, prev_delta_gpu);
+#endif // CUDA
         mult_add_into_gpu(l.outputs*l.batch, l.forgot_delta_gpu, l.state_gpu, ur.delta_gpu);
 
         gradient_array_gpu(l.r_gpu, l.outputs*l.batch, LOGISTIC, ur.delta_gpu);
@@ -388,11 +459,17 @@ void backward_gru_layer_gpu(layer l, network net)
         backward_connected_layer_gpu(ur, s);
         backward_connected_layer_gpu(uz, s);
 
-
+#ifdef CUDA
         net.input_gpu -= l.inputs*l.batch;
         if(net.delta_gpu) net.delta_gpu -= l.inputs*l.batch;
         l.output_gpu -= l.outputs*l.batch;
         l.delta_gpu -= l.outputs*l.batch;
+#elif defined OPENCL
+        net.input_gpu.offset -= l.inputs*l.batch;
+        if(net.delta_gpu.exist) net.delta_gpu.offset -= l.inputs*l.batch;
+        l.output_gpu.offset -= l.outputs*l.batch;
+        l.delta_gpu.offset -= l.outputs*l.batch;
+#endif
         increment_layer(&uz, -1);
         increment_layer(&ur, -1);
         increment_layer(&uh, -1);
@@ -403,4 +480,5 @@ void backward_gru_layer_gpu(layer l, network net)
     }
     copy_gpu(l.outputs*l.batch, end_state, 1, l.state_gpu, 1);
 }
-#endif
+
+#endif // GPU

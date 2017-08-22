@@ -7,6 +7,8 @@
 #include "layer.h"
 #include "data.h"
 #include "tree.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 
 #ifdef GPU

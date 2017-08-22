@@ -3,7 +3,7 @@
 /*
 void train_lsd3(char *fcfg, char *fweight, char *gcfg, char *gweight, char *acfg, char *aweight, int clear)
 {
-#ifdef GPU
+#ifdef CUDA
     //char *train_images = "/home/pjreddie/data/coco/trainvalno5k.txt";
     char *train_images = "/home/pjreddie/data/imagenet/imagenet1k.train.list";
     //char *style_images = "/home/pjreddie/data/coco/trainvalno5k.txt";
@@ -194,7 +194,7 @@ void train_lsd3(char *fcfg, char *fweight, char *gcfg, char *gweight, char *acfg
 /*
 void train_pix2pix(char *cfg, char *weight, char *acfg, char *aweight, int clear)
 {
-#ifdef GPU
+#ifdef CUDA
     //char *train_images = "/home/pjreddie/data/coco/train1.txt";
     //char *train_images = "/home/pjreddie/data/coco/trainvalno5k.txt";
     char *train_images = "/home/pjreddie/data/imagenet/imagenet1k.train.list";
@@ -492,7 +492,11 @@ void train_dcgan(char *cfg, char *weight, char *acfg, char *aweight, int clear, 
 
     int x_size = gnet.inputs*gnet.batch;
     int y_size = gnet.truths*gnet.batch;
+#ifdef CUDA
     float *imerror = cuda_make_array(0, y_size);
+#elif defined OPENCL
+    cl_mem_with_offset imerror = cl_make_array(0, y_size);
+#endif
 
     //int ay_size = anet.truths*anet.batch;
 
@@ -527,9 +531,13 @@ void train_dcgan(char *cfg, char *weight, char *acfg, char *aweight, int clear, 
             for(z = 0; z < x_size; ++z){
                 gnet.input[z] = rand_normal();
             }
-
+#ifdef CUDA
             cuda_push_array(gnet.input_gpu, gnet.input, x_size);
             cuda_push_array(gnet.truth_gpu, gnet.truth, y_size);
+#elif defined OPENCL
+            cl_write_array(gnet.input_gpu, gnet.input, x_size);
+            cl_write_array(gnet.truth_gpu, gnet.truth, y_size);
+#endif
             *gnet.seen += gnet.batch;
             forward_network_gpu(gnet);
 
@@ -545,10 +553,14 @@ void train_dcgan(char *cfg, char *weight, char *acfg, char *aweight, int clear, 
 
             scal_gpu(imlayer.outputs*imlayer.batch, 1, imerror, 1);
             scal_gpu(imlayer.outputs*imlayer.batch, .00, gnet.layers[gnet.n-1].delta_gpu, 1);
-
+#ifdef CUDA
             printf("realness %f\n", cuda_mag_array(imerror, imlayer.outputs*imlayer.batch));
             printf("features %f\n", cuda_mag_array(gnet.layers[gnet.n-1].delta_gpu, imlayer.outputs*imlayer.batch));
+#elif defined OPENCL
+            printf("realness %f\n", cl_mag_array(imerror, imlayer.outputs*imlayer.batch));
+            printf("features %f\n", cl_mag_array(gnet.layers[gnet.n-1].delta_gpu, imlayer.outputs*imlayer.batch));
 
+#endif
             axpy_gpu(imlayer.outputs*imlayer.batch, 1, imerror, 1, gnet.layers[gnet.n-1].delta_gpu, 1);
 
             backward_network_gpu(gnet);
@@ -674,8 +686,11 @@ void train_colorizer(char *cfg, char *weight, char *acfg, char *aweight, int cle
     //int ay_size = anet.outputs*anet.batch;
     anet.delta = 0;
     anet.train = 1;
-
+#ifdef CUDA
     float *imerror = cuda_make_array(0, imlayer.outputs*imlayer.batch);
+#elif defined OPENCL
+    cl_mem_with_offset imerror = cl_make_array(0, imlayer.outputs*imlayer.batch);
+#endif // CUDA
 
     float aloss_avg = -1;
     float gloss_avg = -1;
@@ -704,8 +719,13 @@ void train_colorizer(char *cfg, char *weight, char *acfg, char *aweight, int cle
         for(j = 0; j < net.subdivisions; ++j){
             get_next_batch(train, net.batch, j*net.batch, pixs, 0);
             get_next_batch(gray, net.batch, j*net.batch, graypixs, 0);
+#ifdef CUDA
             cuda_push_array(net.input_gpu, graypixs, net.inputs*net.batch);
             cuda_push_array(net.truth_gpu, pixs, net.truths*net.batch);
+#elif defined OPENCL
+            cl_write_array(net.input_gpu, graypixs, net.inputs*net.batch);
+            cl_write_array(net.truth_gpu, pixs, net.truths*net.batch);
+#endif
             /*
                image origi = float_to_image(net.w, net.h, 3, pixs);
                image grayi = float_to_image(net.w, net.h, 3, graypixs);
@@ -726,10 +746,14 @@ void train_colorizer(char *cfg, char *weight, char *acfg, char *aweight, int cle
             scal_gpu(imlayer.outputs*imlayer.batch, 1./100., net.layers[net.n-1].delta_gpu, 1);
 
             scal_gpu(imlayer.outputs*imlayer.batch, 1, imerror, 1);
-
+#ifdef CUDA
             printf("realness %f\n", cuda_mag_array(imerror, imlayer.outputs*imlayer.batch));
             printf("features %f\n", cuda_mag_array(net.layers[net.n-1].delta_gpu, imlayer.outputs*imlayer.batch));
+#elif defined OPENCL
+            printf("realness %f\n", cl_mag_array(imerror, imlayer.outputs*imlayer.batch));
+            printf("features %f\n", cl_mag_array(net.layers[net.n-1].delta_gpu, imlayer.outputs*imlayer.batch));
 
+#endif // CUDA
             axpy_gpu(imlayer.outputs*imlayer.batch, 1, imerror, 1, net.layers[net.n-1].delta_gpu, 1);
 
             backward_network_gpu(net);
@@ -791,7 +815,7 @@ void train_colorizer(char *cfg, char *weight, char *acfg, char *aweight, int cle
 /*
 void train_lsd2(char *cfgfile, char *weightfile, char *acfgfile, char *aweightfile, int clear)
 {
-#ifdef GPU
+#ifdef CUDA
     char *train_images = "/home/pjreddie/data/coco/trainvalno5k.txt";
     char *backup_directory = "/home/pjreddie/backup/";
     srand(time(0));

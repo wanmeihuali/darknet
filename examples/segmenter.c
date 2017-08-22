@@ -16,8 +16,10 @@ void train_segmenter(char *datacfg, char *cfgfile, char *weightfile, int *gpus, 
     int seed = rand();
     for(i = 0; i < ngpus; ++i){
         srand(seed);
-#ifdef GPU
+#ifdef CUDA
         cuda_set_device(gpus[i]);
+#elif defined OPENCL
+        cl_set_device(&cl, gpus[i]);
 #endif
         nets[i] = parse_network_cfg(cfgfile);
         if(weightfile){
@@ -200,7 +202,7 @@ void demo_segmenter(char *datacfg, char *cfgfile, char *weightfile, int cam_inde
     }
 
     if(!cap) error("Couldn't connect to webcam.\n");
-    cvNamedWindow("Segmenter", CV_WINDOW_NORMAL); 
+    cvNamedWindow("Segmenter", CV_WINDOW_NORMAL);
     cvResizeWindow("Segmenter", 512, 512);
     float fps = 0;
 
@@ -220,7 +222,7 @@ void demo_segmenter(char *datacfg, char *cfgfile, char *weightfile, int cam_inde
         image pred = get_network_image(net);
         image prmask = mask_to_rgb(pred);
         show_image(prmask, "Segmenter");
-        
+
         free_image(in_s);
         free_image(in);
         free_image(prmask);

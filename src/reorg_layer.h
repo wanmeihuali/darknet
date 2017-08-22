@@ -3,6 +3,7 @@
 
 #include "image.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include "layer.h"
 #include "network.h"
 

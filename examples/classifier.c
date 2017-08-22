@@ -29,8 +29,10 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
     int seed = rand();
     for(i = 0; i < ngpus; ++i){
         srand(seed);
-#ifdef GPU
+#ifdef CUDA
         cuda_set_device(gpus[i]);
+#elif defined OPENCL
+        cl_set_device(&cl, gpus[i]);
 #endif
         nets[i] = load_network(cfgfile, weightfile, clear);
         nets[i].learning_rate *= ngpus;
@@ -619,8 +621,10 @@ void try_classifier(char *datacfg, char *cfgfile, char *weightfile, char *filena
         for(i = 0; i < l.c; ++i){
             if(l.rolling_mean) printf("%f %f %f\n", l.rolling_mean[i], l.rolling_variance[i], l.scales[i]);
         }
-#ifdef GPU
+#ifdef CUDA
         cuda_pull_array(l.output_gpu, l.output, l.outputs);
+#elif defined OPENCL
+        cl_read_array(l.output_gpu, l.output, l.outputs);
 #endif
         for(i = 0; i < l.outputs; ++i){
             printf("%f\n", l.output[i]);
@@ -847,7 +851,7 @@ void threat_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_i
     int *indexes = calloc(top, sizeof(int));
 
     if(!cap) error("Couldn't connect to webcam.\n");
-    //cvNamedWindow("Threat", CV_WINDOW_NORMAL); 
+    //cvNamedWindow("Threat", CV_WINDOW_NORMAL);
     //cvResizeWindow("Threat", 512, 512);
     float fps = 0;
     int i;
@@ -876,15 +880,15 @@ void threat_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_i
         float *predictions = network_predict(net, in_s.data);
         float curr_threat = 0;
         if(1){
-            curr_threat = predictions[0] * 0 + 
-                predictions[1] * .6 + 
+            curr_threat = predictions[0] * 0 +
+                predictions[1] * .6 +
                 predictions[2];
         } else {
             curr_threat = predictions[218] +
-                predictions[539] + 
-                predictions[540] + 
-                predictions[368] + 
-                predictions[369] + 
+                predictions[539] +
+                predictions[540] +
+                predictions[368] +
+                predictions[369] +
                 predictions[370];
         }
         threat = roll * curr_threat + (1-roll) * threat;
@@ -892,24 +896,24 @@ void threat_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_i
         draw_box_width(out, x2 + border, y1 + .02*h, x2 + .5 * w, y1 + .02*h + border, border, 0,0,0);
         if(threat > .97) {
             draw_box_width(out,  x2 + .5 * w + border,
-                    y1 + .02*h - 2*border, 
-                    x2 + .5 * w + 6*border, 
+                    y1 + .02*h - 2*border,
+                    x2 + .5 * w + 6*border,
                     y1 + .02*h + 3*border, 3*border, 1,0,0);
         }
         draw_box_width(out,  x2 + .5 * w + border,
-                y1 + .02*h - 2*border, 
-                x2 + .5 * w + 6*border, 
+                y1 + .02*h - 2*border,
+                x2 + .5 * w + 6*border,
                 y1 + .02*h + 3*border, .5*border, 0,0,0);
         draw_box_width(out, x2 + border, y1 + .42*h, x2 + .5 * w, y1 + .42*h + border, border, 0,0,0);
         if(threat > .57) {
             draw_box_width(out,  x2 + .5 * w + border,
-                    y1 + .42*h - 2*border, 
-                    x2 + .5 * w + 6*border, 
+                    y1 + .42*h - 2*border,
+                    x2 + .5 * w + 6*border,
                     y1 + .42*h + 3*border, 3*border, 1,1,0);
         }
         draw_box_width(out,  x2 + .5 * w + border,
-                y1 + .42*h - 2*border, 
-                x2 + .5 * w + 6*border, 
+                y1 + .42*h - 2*border,
+                x2 + .5 * w + 6*border,
                 y1 + .42*h + 3*border, .5*border, 0,0,0);
 
         draw_box_width(out, x1, y1, x2, y2, border, 0,0,0);
@@ -979,7 +983,7 @@ void gun_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_inde
     int *indexes = calloc(top, sizeof(int));
 
     if(!cap) error("Couldn't connect to webcam.\n");
-    cvNamedWindow("Threat Detection", CV_WINDOW_NORMAL); 
+    cvNamedWindow("Threat Detection", CV_WINDOW_NORMAL);
     cvResizeWindow("Threat Detection", 512, 512);
     float fps = 0;
     int i;
@@ -1056,7 +1060,7 @@ void demo_classifier(char *datacfg, char *cfgfile, char *weightfile, int cam_ind
     int *indexes = calloc(top, sizeof(int));
 
     if(!cap) error("Couldn't connect to webcam.\n");
-    cvNamedWindow("Classifier", CV_WINDOW_NORMAL); 
+    cvNamedWindow("Classifier", CV_WINDOW_NORMAL);
     cvResizeWindow("Classifier", 512, 512);
     float fps = 0;
     int i;

@@ -4,6 +4,8 @@
 #include "image.h"
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 layer make_normalization_layer(int batch, int w, int h, int c, int size, float alpha, float beta, float kappa);
 void resize_normalization_layer(layer *layer, int h, int w);

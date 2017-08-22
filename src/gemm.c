@@ -1,25 +1,34 @@
+//OPENCL done, to do: better gemm
 #include "gemm.h"
 #include "utils.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
-void gemm_bin(int M, int N, int K, float ALPHA, 
-        char  *A, int lda, 
-        float *B, int ldb,
-        float *C, int ldc)
+void gemm_bin(int M, int N, int K, float ALPHA,
+              char  *A, int lda,
+              float *B, int ldb,
+              float *C, int ldc)
 {
     int i,j,k;
-    for(i = 0; i < M; ++i){
-        for(k = 0; k < K; ++k){
+    for(i = 0; i < M; ++i)
+    {
+        for(k = 0; k < K; ++k)
+        {
             char A_PART = A[i*lda+k];
-            if(A_PART){
-                for(j = 0; j < N; ++j){
+            if(A_PART)
+            {
+                for(j = 0; j < N; ++j)
+                {
                     C[i*ldc+j] += B[k*ldb+j];
                 }
-            } else {
-                for(j = 0; j < N; ++j){
+            }
+            else
+            {
+                for(j = 0; j < N; ++j)
+                {
                     C[i*ldc+j] -= B[k*ldb+j];
                 }
             }
@@ -31,7 +40,8 @@ float *random_matrix(int rows, int cols)
 {
     int i;
     float *m = calloc(rows*cols, sizeof(float));
-    for(i = 0; i < rows*cols; ++i){
+    for(i = 0; i < rows*cols; ++i)
+    {
         m[i] = (float)rand()/RAND_MAX;
     }
     return m;
@@ -51,7 +61,8 @@ void time_random_matrix(int TA, int TB, int m, int k, int n)
     float *c = random_matrix(m,n);
     int i;
     clock_t start = clock(), end;
-    for(i = 0; i<10; ++i){
+    for(i = 0; i<10; ++i)
+    {
         gemm_cpu(TA,TB,m,n,k,1,a,lda,b,ldb,1,c,n);
     }
     end = clock();
@@ -62,43 +73,49 @@ void time_random_matrix(int TA, int TB, int m, int k, int n)
 }
 
 
-void gemm(int TA, int TB, int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float BETA,
-        float *C, int ldc)
+void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
+          float *A, int lda,
+          float *B, int ldb,
+          float BETA,
+          float *C, int ldc)
 {
     gemm_cpu( TA,  TB,  M, N, K, ALPHA,A,lda, B, ldb,BETA,C,ldc);
 }
 
-void gemm_nn(int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float *C, int ldc)
+void gemm_nn(int M, int N, int K, float ALPHA,
+             float *A, int lda,
+             float *B, int ldb,
+             float *C, int ldc)
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(k = 0; k < K; ++k){
+    for(i = 0; i < M; ++i)
+    {
+        for(k = 0; k < K; ++k)
+        {
             register float A_PART = ALPHA*A[i*lda+k];
-            for(j = 0; j < N; ++j){
+            for(j = 0; j < N; ++j)
+            {
                 C[i*ldc+j] += A_PART*B[k*ldb+j];
             }
         }
     }
 }
 
-void gemm_nt(int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float *C, int ldc)
+void gemm_nt(int M, int N, int K, float ALPHA,
+             float *A, int lda,
+             float *B, int ldb,
+             float *C, int ldc)
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(j = 0; j < N; ++j){
+    for(i = 0; i < M; ++i)
+    {
+        for(j = 0; j < N; ++j)
+        {
             register float sum = 0;
-            for(k = 0; k < K; ++k){
+            for(k = 0; k < K; ++k)
+            {
                 sum += ALPHA*A[i*lda+k]*B[j*ldb + k];
             }
             C[i*ldc+j] += sum;
@@ -106,34 +123,40 @@ void gemm_nt(int M, int N, int K, float ALPHA,
     }
 }
 
-void gemm_tn(int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float *C, int ldc)
+void gemm_tn(int M, int N, int K, float ALPHA,
+             float *A, int lda,
+             float *B, int ldb,
+             float *C, int ldc)
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(k = 0; k < K; ++k){
+    for(i = 0; i < M; ++i)
+    {
+        for(k = 0; k < K; ++k)
+        {
             register float A_PART = ALPHA*A[k*lda+i];
-            for(j = 0; j < N; ++j){
+            for(j = 0; j < N; ++j)
+            {
                 C[i*ldc+j] += A_PART*B[k*ldb+j];
             }
         }
     }
 }
 
-void gemm_tt(int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float *C, int ldc)
+void gemm_tt(int M, int N, int K, float ALPHA,
+             float *A, int lda,
+             float *B, int ldb,
+             float *C, int ldc)
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(j = 0; j < N; ++j){
+    for(i = 0; i < M; ++i)
+    {
+        for(j = 0; j < N; ++j)
+        {
             register float sum = 0;
-            for(k = 0; k < K; ++k){
+            for(k = 0; k < K; ++k)
+            {
                 sum += ALPHA*A[i+k*lda]*B[k+j*ldb];
             }
             C[i*ldc+j] += sum;
@@ -142,16 +165,18 @@ void gemm_tt(int M, int N, int K, float ALPHA,
 }
 
 
-void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA, 
-        float *A, int lda, 
-        float *B, int ldb,
-        float BETA,
-        float *C, int ldc)
+void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
+              float *A, int lda,
+              float *B, int ldb,
+              float BETA,
+              float *C, int ldc)
 {
     //printf("cpu: %d %d %d %d %d %f %d %d %f %d\n",TA, TB, M, N, K, ALPHA, lda, ldb, BETA, ldc);
     int i, j;
-    for(i = 0; i < M; ++i){
-        for(j = 0; j < N; ++j){
+    for(i = 0; i < M; ++i)
+    {
+        for(j = 0; j < N; ++j)
+        {
             C[i*ldc + j] *= BETA;
         }
     }
@@ -165,19 +190,19 @@ void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
         gemm_tt(M, N, K, ALPHA,A,lda, B, ldb,C,ldc);
 }
 
-#ifdef GPU
+#ifdef CUDA
 
 #include <math.h>
 
-void gemm_gpu(int TA, int TB, int M, int N, int K, float ALPHA, 
-        float *A_gpu, int lda, 
-        float *B_gpu, int ldb,
-        float BETA,
-        float *C_gpu, int ldc)
+void gemm_gpu(int TA, int TB, int M, int N, int K, float ALPHA,
+              float *A_gpu, int lda,
+              float *B_gpu, int ldb,
+              float BETA,
+              float *C_gpu, int ldc)
 {
     cublasHandle_t handle = blas_handle();
-    cudaError_t status = cublasSgemm(handle, (TB ? CUBLAS_OP_T : CUBLAS_OP_N), 
-            (TA ? CUBLAS_OP_T : CUBLAS_OP_N), N, M, K, &ALPHA, B_gpu, ldb, A_gpu, lda, &BETA, C_gpu, ldc);
+    cudaError_t status = cublasSgemm(handle, (TB ? CUBLAS_OP_T : CUBLAS_OP_N),
+                                     (TA ? CUBLAS_OP_T : CUBLAS_OP_N), N, M, K, &ALPHA, B_gpu, ldb, A_gpu, lda, &BETA, C_gpu, ldc);
     check_error(status);
 }
 
@@ -200,7 +225,8 @@ void time_gpu_random_matrix(int TA, int TB, int m, int k, int n)
     float *c = random_matrix(m,n);
     int i;
     clock_t start = clock(), end;
-    for(i = 0; i<32; ++i){
+    for(i = 0; i<32; ++i)
+    {
         gemm_gpu(TA,TB,m,n,k,1,a,lda,b,ldb,1,c,n);
     }
     end = clock();
@@ -227,7 +253,8 @@ void time_gpu(int TA, int TB, int m, int k, int n)
 
     int i;
     clock_t start = clock(), end;
-    for(i = 0; i<iter; ++i){
+    for(i = 0; i<iter; ++i)
+    {
         gemm_gpu(TA,TB,m,n,k,1,a_cl,lda,b_cl,ldb,1,c_cl,n);
         cudaThreadSynchronize();
     }
@@ -271,7 +298,8 @@ void test_gpu_accuracy(int TA, int TB, int m, int k, int n)
     //printf("\n\nCPU\n");
     //pm(m, n, c);
     double sse = 0;
-    for(i = 0; i < m*n; ++i) {
+    for(i = 0; i < m*n; ++i)
+    {
         //printf("%f %f\n", c[i], c_gpu[i]);
         sse += pow(c[i]-c_gpu[i], 2);
     }
@@ -285,40 +313,146 @@ void test_gpu_accuracy(int TA, int TB, int m, int k, int n)
 int test_gpu_blas()
 {
     /*
-       test_gpu_accuracy(0,0,10,576,75); 
+       test_gpu_accuracy(0,0,10,576,75);
 
-       test_gpu_accuracy(0,0,17,10,10); 
-       test_gpu_accuracy(1,0,17,10,10); 
-       test_gpu_accuracy(0,1,17,10,10); 
-       test_gpu_accuracy(1,1,17,10,10); 
+       test_gpu_accuracy(0,0,17,10,10);
+       test_gpu_accuracy(1,0,17,10,10);
+       test_gpu_accuracy(0,1,17,10,10);
+       test_gpu_accuracy(1,1,17,10,10);
 
-       test_gpu_accuracy(0,0,1000,10,100); 
-       test_gpu_accuracy(1,0,1000,10,100); 
-       test_gpu_accuracy(0,1,1000,10,100); 
-       test_gpu_accuracy(1,1,1000,10,100); 
+       test_gpu_accuracy(0,0,1000,10,100);
+       test_gpu_accuracy(1,0,1000,10,100);
+       test_gpu_accuracy(0,1,1000,10,100);
+       test_gpu_accuracy(1,1,1000,10,100);
 
-       test_gpu_accuracy(0,0,10,10,10); 
+       test_gpu_accuracy(0,0,10,10,10);
 
-       time_gpu(0,0,64,2916,363); 
-       time_gpu(0,0,64,2916,363); 
-       time_gpu(0,0,64,2916,363); 
-       time_gpu(0,0,192,729,1600); 
-       time_gpu(0,0,384,196,1728); 
-       time_gpu(0,0,256,196,3456); 
-       time_gpu(0,0,256,196,2304); 
-       time_gpu(0,0,128,4096,12544); 
-       time_gpu(0,0,128,4096,4096); 
+       time_gpu(0,0,64,2916,363);
+       time_gpu(0,0,64,2916,363);
+       time_gpu(0,0,64,2916,363);
+       time_gpu(0,0,192,729,1600);
+       time_gpu(0,0,384,196,1728);
+       time_gpu(0,0,256,196,3456);
+       time_gpu(0,0,256,196,2304);
+       time_gpu(0,0,128,4096,12544);
+       time_gpu(0,0,128,4096,4096);
      */
-    time_gpu(0,0,64,75,12544); 
-    time_gpu(0,0,64,75,12544); 
-    time_gpu(0,0,64,75,12544); 
-    time_gpu(0,0,64,576,12544); 
-    time_gpu(0,0,256,2304,784); 
-    time_gpu(1,1,2304,256,784); 
-    time_gpu(0,0,512,4608,196); 
-    time_gpu(1,1,4608,512,196); 
+    time_gpu(0,0,64,75,12544);
+    time_gpu(0,0,64,75,12544);
+    time_gpu(0,0,64,75,12544);
+    time_gpu(0,0,64,576,12544);
+    time_gpu(0,0,256,2304,784);
+    time_gpu(1,1,2304,256,784);
+    time_gpu(0,0,512,4608,196);
+    time_gpu(1,1,4608,512,196);
 
     return 0;
 }
 #endif
+
+#ifdef OPENCL
+#include <math.h>
+cl_kernel get_gemm_kernel()
+{
+    static int init = 0;
+    static cl_kernel gemm_kernel;
+    if(!init)
+    {
+        gemm_kernel = get_kernel("clKernels/gemm.cl", "gemm", "-D BLOCK=" STR(BLOCK1) );
+        init = 1;
+    }
+    return gemm_kernel;
+}
+
+cl_kernel get_gemm_nn_kernel()
+{
+    static int init = 0;
+    static cl_kernel gemm_kernel;
+    if(!init)
+    {
+        gemm_kernel = get_kernel("clKernels/gemm.cl", "gemm_nn", "-D BLOCK=" STR(BLOCK1) );
+        init = 1;
+    }
+    return gemm_kernel;
+}
+
+cl_kernel get_gemm_nt_kernel()
+{
+    static int init = 0;
+    static cl_kernel gemm_kernel;
+    if(!init)
+    {
+        gemm_kernel = get_kernel("clKernels/gemm.cl", "gemm_nt", "-D BLOCK=" STR(BLOCK1) );
+        init = 1;
+    }
+    return gemm_kernel;
+}
+
+cl_kernel get_gemm_tn_kernel()
+{
+    static int init = 0;
+    static cl_kernel gemm_kernel;
+    if(!init)
+    {
+        gemm_kernel = get_kernel("clKernels/gemm.cl", "gemm_tn", "-D BLOCK=" STR(BLOCK1) );
+        init = 1;
+    }
+    return gemm_kernel;
+}
+
+void gemm_gpu(int TA, int TB, int M, int N, int K, float ALPHA,
+              cl_mem_with_offset A_gpu, int lda,
+              cl_mem_with_offset B_gpu, int ldb,
+              float BETA,
+              cl_mem_with_offset C_gpu, int ldc)
+{
+#ifdef CLBLAS
+    cl_command_queue queue = cl.queue;
+    cl_event event;
+    cl.error = clblasSgemm(
+        clblasRowMajor,
+        TA?clblasTrans:clblasNoTrans, TB?clblasTrans:clblasNoTrans,
+        M, N, K,ALPHA,
+        A_gpu.memory, A_gpu.offset, lda,
+        B_gpu.memory, B_gpu.offset, ldb,
+        BETA,
+        C_gpu.memory, C_gpu.offset, ldc,
+        1, &queue, 0, NULL, &event);
+    cl_check_error(cl);
+#else
+    cl_kernel gemm_kernel;
+    if (TA && TB)  gemm_kernel = get_gemm_kernel();
+    if(!TA && !TB) gemm_kernel = get_gemm_nn_kernel();
+    if(!TA && TB)  gemm_kernel = get_gemm_nt_kernel();
+    if(TA && !TB)  gemm_kernel = get_gemm_tn_kernel();
+    cl_command_queue queue = cl.queue;
+
+    cl_uint i = 0;
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(TA), (void*) &TA);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(TB), (void*) &TB);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(M), (void*) &M);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(N), (void*) &N);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(K), (void*) &K);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(ALPHA), (void*) &ALPHA);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(A_gpu.memory), (void*) &(A_gpu.memory));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(A_gpu.offset), (void*) &(A_gpu.offset));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(lda), (void*) &lda);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(B_gpu.memory), (void*) &(B_gpu.memory));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(B_gpu.offset), (void*) &(B_gpu.offset));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(ldb), (void*) &ldb);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(BETA), (void*) &BETA);
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(C_gpu.memory), (void*) &(C_gpu.memory));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(C_gpu.offset), (void*) &(C_gpu.offset));
+    cl.error = clSetKernelArg(gemm_kernel, i++, sizeof(ldc), (void*) &ldc);
+    cl_check_error(cl);
+
+    const size_t global_size[] = {ceil((float)N/BLOCK1)*BLOCK1, ceil((float)M/BLOCK1)*BLOCK1};
+    const size_t local_size[] = {BLOCK1, BLOCK1};
+
+    cl.error = clEnqueueNDRangeKernel(queue, gemm_kernel, 2, 0, global_size, local_size, 0, 0, 0);
+
+    cl_check_error(cl);
+#endif // CLBLAS
+}
+#endif // OPENCL
 

@@ -10,8 +10,12 @@ void forward_region_layer(const layer l, network net);
 void backward_region_layer(const layer l, network net);
 void resize_region_layer(layer *l, int w, int h);
 
-#ifdef GPU
+#ifdef CUDA
 void forward_region_layer_gpu(const layer l, network net);
+void backward_region_layer_gpu(layer l, network net);
+#endif
+#ifdef OPENCL
+void forward_region_layer_gpu(layer l, network net);
 void backward_region_layer_gpu(layer l, network net);
 #endif
 

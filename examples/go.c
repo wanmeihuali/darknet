@@ -130,8 +130,10 @@ void train_go(char *cfgfile, char *weightfile, char *filename, int *gpus, int ng
     int seed = rand();
     for(i = 0; i < ngpus; ++i){
         srand(seed);
-#ifdef GPU
+#ifdef CUDA
         cuda_set_device(gpus[i]);
+#elif defined OPENCL
+        cl_set_device(&cl, gpus[i]);
 #endif
         nets[i] = load_network(cfgfile, weightfile, clear);
         nets[i].learning_rate *= ngpus;
@@ -424,7 +426,7 @@ int generate_move(network net, int player, float *board, int multi, float thresh
     if (row == 19) return -1;
 
     if (suicide_go(board, player, row, col)){
-        return -1; 
+        return -1;
     }
 
     if (suicide_go(board, player, index/19, index%19)){
@@ -519,20 +521,20 @@ void engine_go(char *filename, char *weightfile, int multi)
         } else if (!strcmp(buff, "known_command")){
             char comm[256];
             scanf("%s", comm);
-            int known = (!strcmp(comm, "protocol_version") || 
-                    !strcmp(comm, "name") || 
-                    !strcmp(comm, "version") || 
-                    !strcmp(comm, "known_command") || 
-                    !strcmp(comm, "list_commands") || 
-                    !strcmp(comm, "quit") || 
-                    !strcmp(comm, "boardsize") || 
-                    !strcmp(comm, "clear_board") || 
-                    !strcmp(comm, "komi") || 
-                    !strcmp(comm, "final_status_list") || 
-                    !strcmp(comm, "play") || 
-                    !strcmp(comm, "genmove_white") || 
-                    !strcmp(comm, "genmove_black") || 
-                    !strcmp(comm, "fixed_handicap") || 
+            int known = (!strcmp(comm, "protocol_version") ||
+                    !strcmp(comm, "name") ||
+                    !strcmp(comm, "version") ||
+                    !strcmp(comm, "known_command") ||
+                    !strcmp(comm, "list_commands") ||
+                    !strcmp(comm, "quit") ||
+                    !strcmp(comm, "boardsize") ||
+                    !strcmp(comm, "clear_board") ||
+                    !strcmp(comm, "komi") ||
+                    !strcmp(comm, "final_status_list") ||
+                    !strcmp(comm, "play") ||
+                    !strcmp(comm, "genmove_white") ||
+                    !strcmp(comm, "genmove_black") ||
+                    !strcmp(comm, "fixed_handicap") ||
                     !strcmp(comm, "genmove"));
             if(known) printf("=%s true\n\n", ids);
             else printf("=%s false\n\n", ids);
@@ -556,7 +558,7 @@ void engine_go(char *filename, char *weightfile, int multi)
             int indexes[] = {72, 288, 300, 60, 180, 174, 186, 66, 294};
             int i;
             for(i = 0; i < handicap; ++i){
-                board[indexes[i]] = 1;   
+                board[indexes[i]] = 1;
             }
         } else if (!strcmp(buff, "clear_board")){
             passed = 0;

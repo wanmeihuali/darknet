@@ -1,5 +1,7 @@
+//OPENCL done
 #include "avgpool_layer.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include <stdio.h>
 
 avgpool_layer make_avgpool_layer(int batch, int w, int h, int c)
@@ -21,12 +23,19 @@ avgpool_layer make_avgpool_layer(int batch, int w, int h, int c)
     l.delta =   calloc(output_size, sizeof(float));
     l.forward = forward_avgpool_layer;
     l.backward = backward_avgpool_layer;
-    #ifdef GPU
+#ifdef CUDA
     l.forward_gpu = forward_avgpool_layer_gpu;
     l.backward_gpu = backward_avgpool_layer_gpu;
     l.output_gpu  = cuda_make_array(l.output, output_size);
     l.delta_gpu   = cuda_make_array(l.delta, output_size);
-    #endif
+#endif
+#ifdef OPENCL
+    l.forward_gpu = forward_avgpool_layer_gpu;
+    l.backward_gpu = backward_avgpool_layer_gpu;
+    l.output_gpu  = cl_make_array(l.output, output_size);
+    l.delta_gpu   = cl_make_array(l.delta, output_size);
+#endif
+
     return l;
 }
 
@@ -41,11 +50,14 @@ void forward_avgpool_layer(const avgpool_layer l, network net)
 {
     int b,i,k;
 
-    for(b = 0; b < l.batch; ++b){
-        for(k = 0; k < l.c; ++k){
+    for(b = 0; b < l.batch; ++b)
+    {
+        for(k = 0; k < l.c; ++k)
+        {
             int out_index = k + b*l.c;
             l.output[out_index] = 0;
-            for(i = 0; i < l.h*l.w; ++i){
+            for(i = 0; i < l.h*l.w; ++i)
+            {
                 int in_index = i + l.h*l.w*(k + b*l.c);
                 l.output[out_index] += net.input[in_index];
             }
@@ -58,10 +70,13 @@ void backward_avgpool_layer(const avgpool_layer l, network net)
 {
     int b,i,k;
 
-    for(b = 0; b < l.batch; ++b){
-        for(k = 0; k < l.c; ++k){
+    for(b = 0; b < l.batch; ++b)
+    {
+        for(k = 0; k < l.c; ++k)
+        {
             int out_index = k + b*l.c;
-            for(i = 0; i < l.h*l.w; ++i){
+            for(i = 0; i < l.h*l.w; ++i)
+            {
                 int in_index = i + l.h*l.w*(k + b*l.c);
                 net.delta[in_index] += l.delta[out_index] / (l.h*l.w);
             }
@@ -69,3 +84,78 @@ void backward_avgpool_layer(const avgpool_layer l, network net)
     }
 }
 
+#ifdef OPENCL
+cl_kernel get_avgpool_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init){
+        kernel = get_kernel("clKernels/avgpool_layer_kernels.cl", "forward_avgpool_layer_kernel", "-D BLOCK=" STR(BLOCK));
+        init = 1;
+    }
+    return kernel;
+}
+
+void forward_avgpool_layer_gpu(avgpool_layer l, network net)
+{
+    cl_kernel kernel = get_avgpool_kernel();
+    cl_command_queue queue = cl.queue;
+
+    size_t n = l.c*l.batch;
+
+    cl_uint i = 0;
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(l.w), (void*) &(l.w));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(l.h), (void*) &(l.h));
+	cl.error = clSetKernelArg(kernel, i++, sizeof(l.c), (void*) &(l.c));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.input_gpu.memory), (void*) &(net.input_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.input_gpu.offset), (void*) &(net.input_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(l.output_gpu.memory), (void*) &(l.output_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(l.output_gpu.offset), (void*) &(l.output_gpu.offset));
+    cl_check_error(cl);
+
+    size_t gsize[] = {cl_global_size(n,BLOCK)};
+    size_t localws[]={BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
+
+cl_kernel get_backward_avgpool_layer_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init){
+        kernel = get_kernel("clKernels/avgpool_layer_kernels.cl", "backward_avgpool_layer_kernel", "-D BLOCK=" STR(BLOCK));
+        init = 1;
+    }
+    return kernel;
+
+}
+
+void backward_avgpool_layer_gpu(avgpool_layer layer, network net)
+{
+    cl_kernel kernel = get_backward_avgpool_layer_kernel();
+    cl_command_queue queue = cl.queue;
+
+    size_t n = layer.c*layer.batch;
+
+    cl_uint i = 0;
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.w), (void*) &(layer.w));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.h), (void*) &(layer.h));
+	cl.error = clSetKernelArg(kernel, i++, sizeof(layer.c), (void*) &(layer.c));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.delta_gpu.memory), (void*) &(net.delta_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.delta_gpu.offset), (void*) &(net.delta_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.delta_gpu.memory), (void*) &(layer.delta_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.delta_gpu.offset), (void*) &(layer.delta_gpu.offset));
+    cl_check_error(cl);
+
+    size_t gsize[] = {cl_global_size(n,BLOCK)};
+    size_t localws[]={BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
+
+
+
+#endif

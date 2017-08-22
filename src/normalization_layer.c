@@ -25,15 +25,21 @@ layer make_normalization_layer(int batch, int w, int h, int c, int size, float a
 
     layer.forward = forward_normalization_layer;
     layer.backward = backward_normalization_layer;
-    #ifdef GPU
+#ifdef GPU
     layer.forward_gpu = forward_normalization_layer_gpu;
     layer.backward_gpu = backward_normalization_layer_gpu;
-
+#ifdef CUDA
     layer.output_gpu =  cuda_make_array(layer.output, h * w * c * batch);
     layer.delta_gpu =   cuda_make_array(layer.delta, h * w * c * batch);
     layer.squared_gpu = cuda_make_array(layer.squared, h * w * c * batch);
     layer.norms_gpu =   cuda_make_array(layer.norms, h * w * c * batch);
-    #endif
+#elif defined OPENCL
+    layer.output_gpu =  cl_make_array(layer.output, h * w * c * batch);
+    layer.delta_gpu =   cl_make_array(layer.delta, h * w * c * batch);
+    layer.squared_gpu = cl_make_array(layer.squared, h * w * c * batch);
+    layer.norms_gpu =   cl_make_array(layer.norms, h * w * c * batch);
+#endif
+#endif
     return layer;
 }
 
@@ -51,15 +57,24 @@ void resize_normalization_layer(layer *layer, int w, int h)
     layer->delta = realloc(layer->delta, h * w * c * batch * sizeof(float));
     layer->squared = realloc(layer->squared, h * w * c * batch * sizeof(float));
     layer->norms = realloc(layer->norms, h * w * c * batch * sizeof(float));
-#ifdef GPU
+#ifdef CUDA
     cuda_free(layer->output_gpu);
-    cuda_free(layer->delta_gpu); 
-    cuda_free(layer->squared_gpu); 
-    cuda_free(layer->norms_gpu);   
+    cuda_free(layer->delta_gpu);
+    cuda_free(layer->squared_gpu);
+    cuda_free(layer->norms_gpu);
     layer->output_gpu =  cuda_make_array(layer->output, h * w * c * batch);
     layer->delta_gpu =   cuda_make_array(layer->delta, h * w * c * batch);
     layer->squared_gpu = cuda_make_array(layer->squared, h * w * c * batch);
     layer->norms_gpu =   cuda_make_array(layer->norms, h * w * c * batch);
+#elif defined OPENCL
+    cl_free(layer->output_gpu);
+    cl_free(layer->delta_gpu);
+    cl_free(layer->squared_gpu);
+    cl_free(layer->norms_gpu);
+    layer->output_gpu =  cl_make_array(layer->output, h * w * c * batch);
+    layer->delta_gpu =   cl_make_array(layer->delta, h * w * c * batch);
+    layer->squared_gpu = cl_make_array(layer->squared, h * w * c * batch);
+    layer->norms_gpu =   cl_make_array(layer->norms, h * w * c * batch);
 #endif
 }
 
@@ -71,18 +86,21 @@ void forward_normalization_layer(const layer layer, network net)
     int c = layer.c;
     scal_cpu(w*h*c*layer.batch, 0, layer.squared, 1);
 
-    for(b = 0; b < layer.batch; ++b){
+    for(b = 0; b < layer.batch; ++b)
+    {
         float *squared = layer.squared + w*h*c*b;
         float *norms   = layer.norms + w*h*c*b;
         float *input   = net.input + w*h*c*b;
         pow_cpu(w*h*c, 2, input, 1, squared, 1);
 
         const_cpu(w*h, layer.kappa, norms, 1);
-        for(k = 0; k < layer.size/2; ++k){
+        for(k = 0; k < layer.size/2; ++k)
+        {
             axpy_cpu(w*h, layer.alpha, squared + w*h*k, 1, norms, 1);
         }
 
-        for(k = 1; k < layer.c; ++k){
+        for(k = 1; k < layer.c; ++k)
+        {
             copy_cpu(w*h, norms + w*h*(k-1), 1, norms + w*h*k, 1);
             int prev = k - ((layer.size-1)/2) - 1;
             int next = k + (layer.size/2);
@@ -115,23 +133,63 @@ void forward_normalization_layer_gpu(const layer layer, network net)
     int c = layer.c;
     scal_gpu(w*h*c*layer.batch, 0, layer.squared_gpu, 1);
 
-    for(b = 0; b < layer.batch; ++b){
+    for(b = 0; b < layer.batch; ++b)
+    {
+#ifdef CUDA
         float *squared = layer.squared_gpu + w*h*c*b;
         float *norms   = layer.norms_gpu + w*h*c*b;
         float *input   = net.input_gpu + w*h*c*b;
+#elif defined OPENCL
+        cl_mem_with_offset squared = layer.squared_gpu;
+        squared.offset += w*h*c*b;
+        cl_mem_with_offset norms   = layer.norms_gpu;
+        norms.offset += w*h*c*b;
+        cl_mem_with_offset input   = net.input_gpu;
+        input.offset += w*h*c*b;
+#endif
+
         pow_gpu(w*h*c, 2, input, 1, squared, 1);
 
         const_gpu(w*h, layer.kappa, norms, 1);
-        for(k = 0; k < layer.size/2; ++k){
+        for(k = 0; k < layer.size/2; ++k)
+        {
+#ifdef CUDA
             axpy_gpu(w*h, layer.alpha, squared + w*h*k, 1, norms, 1);
+#elif defined OPENCL
+            squared.offset += w*h*k;
+            axpy_gpu(w*h, layer.alpha, squared, 1, norms, 1);
+            squared.offset -= w*h*k;
+#endif
         }
 
-        for(k = 1; k < layer.c; ++k){
+        for(k = 1; k < layer.c; ++k)
+        {
+#ifdef CUDA
             copy_gpu(w*h, norms + w*h*(k-1), 1, norms + w*h*k, 1);
+#elif defined OPENCL
+            cl_mem_with_offset temp0 = norms;
+            temp0.offset += w*h*(k-1);
+            cl_mem_with_offset temp1 = norms;
+            temp1.offset += w*h*k;
+            copy_gpu(w*h, temp0, 1, temp1, 1);
+#endif
             int prev = k - ((layer.size-1)/2) - 1;
             int next = k + (layer.size/2);
+#ifdef CUDA
             if(prev >= 0)      axpy_gpu(w*h, -layer.alpha, squared + w*h*prev, 1, norms + w*h*k, 1);
             if(next < layer.c) axpy_gpu(w*h,  layer.alpha, squared + w*h*next, 1, norms + w*h*k, 1);
+#elif defined OPENCL
+            if(prev >= 0) {
+                temp0 = squared;
+                temp0.offset += w*h*prev;
+                axpy_gpu(w*h, -layer.alpha, temp0, 1, temp1, 1);
+            }
+            if(next < layer.c) {
+                temp0 = squared;
+                temp0.offset += w*h*next;
+                axpy_gpu(w*h,  layer.alpha, temp0, 1, temp1, 1);
+            }
+#endif
         }
     }
     pow_gpu(w*h*c*layer.batch, -layer.beta, layer.norms_gpu, 1, layer.output_gpu, 1);

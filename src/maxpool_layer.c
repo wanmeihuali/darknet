@@ -1,5 +1,7 @@
+//OPENCL done
 #include "maxpool_layer.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include <stdio.h>
 
 image get_maxpool_image(maxpool_layer l)
@@ -40,13 +42,19 @@ maxpool_layer make_maxpool_layer(int batch, int h, int w, int c, int size, int s
     l.delta =   calloc(output_size, sizeof(float));
     l.forward = forward_maxpool_layer;
     l.backward = backward_maxpool_layer;
-    #ifdef GPU
+#ifdef GPU
     l.forward_gpu = forward_maxpool_layer_gpu;
     l.backward_gpu = backward_maxpool_layer_gpu;
+#ifdef CUDA
     l.indexes_gpu = cuda_make_int_array(0, output_size);
     l.output_gpu  = cuda_make_array(l.output, output_size);
     l.delta_gpu   = cuda_make_array(l.delta, output_size);
-    #endif
+#elif defined OPENCL
+    l.indexes_gpu = cl_make_int_array(0, output_size);
+    l.output_gpu  = cl_make_array(l.output, output_size);
+    l.delta_gpu   = cl_make_array(l.delta, output_size);
+#endif
+#endif
     fprintf(stderr, "max          %d x %d / %d  %4d x%4d x%4d   ->  %4d x%4d x%4d\n", size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c);
     return l;
 }
@@ -66,14 +74,21 @@ void resize_maxpool_layer(maxpool_layer *l, int w, int h)
     l->output = realloc(l->output, output_size * sizeof(float));
     l->delta = realloc(l->delta, output_size * sizeof(float));
 
-    #ifdef GPU
+#ifdef CUDA
     cuda_free((float *)l->indexes_gpu);
     cuda_free(l->output_gpu);
     cuda_free(l->delta_gpu);
     l->indexes_gpu = cuda_make_int_array(0, output_size);
     l->output_gpu  = cuda_make_array(l->output, output_size);
     l->delta_gpu   = cuda_make_array(l->delta,  output_size);
-    #endif
+#elif defined OPENCL
+    cl_free(l->indexes_gpu);
+    cl_free(l->output_gpu);
+    cl_free(l->delta_gpu);
+    l->indexes_gpu = cl_make_int_array(0, output_size);
+    l->output_gpu  = cl_make_array(l->output, output_size);
+    l->delta_gpu   = cl_make_array(l->delta,  output_size);
+#endif
 }
 
 void forward_maxpool_layer(const maxpool_layer l, network net)
@@ -86,15 +101,21 @@ void forward_maxpool_layer(const maxpool_layer l, network net)
     int w = l.out_w;
     int c = l.c;
 
-    for(b = 0; b < l.batch; ++b){
-        for(k = 0; k < c; ++k){
-            for(i = 0; i < h; ++i){
-                for(j = 0; j < w; ++j){
+    for(b = 0; b < l.batch; ++b)
+    {
+        for(k = 0; k < c; ++k)
+        {
+            for(i = 0; i < h; ++i)
+            {
+                for(j = 0; j < w; ++j)
+                {
                     int out_index = j + w*(i + h*(k + c*b));
                     float max = -FLT_MAX;
                     int max_i = -1;
-                    for(n = 0; n < l.size; ++n){
-                        for(m = 0; m < l.size; ++m){
+                    for(n = 0; n < l.size; ++n)
+                    {
+                        for(m = 0; m < l.size; ++m)
+                        {
                             int cur_h = h_offset + i*l.stride + n;
                             int cur_w = w_offset + j*l.stride + m;
                             int index = cur_w + l.w*(cur_h + l.h*(k + b*l.c));
@@ -119,9 +140,102 @@ void backward_maxpool_layer(const maxpool_layer l, network net)
     int h = l.out_h;
     int w = l.out_w;
     int c = l.c;
-    for(i = 0; i < h*w*c*l.batch; ++i){
+    for(i = 0; i < h*w*c*l.batch; ++i)
+    {
         int index = l.indexes[i];
         net.delta[index] += l.delta[i];
     }
 }
+
+#ifdef OPENCL
+
+cl_kernel get_forward_maxpool_layer_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init)
+    {
+        kernel = get_kernel("clKernels/maxpool_layer_kernels.cl", "forward_maxpool_layer_kernel", "-D BLOCK=" STR(BLOCK));
+        init = 1;
+    }
+    return kernel;
+}
+
+cl_kernel get_backward_maxpool_layer_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init)
+    {
+        kernel = get_kernel("clKernels/maxpool_layer_kernels.cl", "backward_maxpool_layer_kernel", "-D BLOCK=" STR(BLOCK));
+        init = 1;
+    }
+    return kernel;
+}
+
+void forward_maxpool_layer_gpu(maxpool_layer layer, network net)
+{
+    int h = layer.out_h;
+    int w = layer.out_w;
+    int c = layer.c;
+
+    int n = h*w*c*layer.batch;
+
+    cl_kernel kernel = get_forward_maxpool_layer_kernel();
+    cl_command_queue queue = cl.queue;
+
+    cl_uint i = 0;
+
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.h), (void*) &(layer.h));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.w), (void*) &(layer.w));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.c), (void*) &(layer.c));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.stride), (void*) &(layer.stride));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.size), (void*) &(layer.size));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.pad), (void*) &(layer.pad));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.input_gpu.memory), (void*) &(net.input_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.input_gpu.offset), (void*) &(net.input_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.output_gpu.memory), (void*) &(layer.output_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.output_gpu.offset), (void*) &(layer.output_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.indexes_gpu.memory), (void*) &(layer.indexes_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.indexes_gpu.offset), (void*) &(layer.indexes_gpu.offset));
+    cl_check_error(cl);
+
+    const size_t gsize[] = {cl_global_size(n,BLOCK)};
+    const size_t localws[] = {BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
+
+void backward_maxpool_layer_gpu(maxpool_layer layer, network net)
+{
+    size_t n = layer.h*layer.w*layer.c*layer.batch;
+
+    cl_kernel kernel = get_backward_maxpool_layer_kernel();
+    cl_command_queue queue = cl.queue;
+
+    cl_uint i = 0;
+
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.h), (void*) &(layer.h));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.w), (void*) &(layer.w));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.c), (void*) &(layer.c));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.stride), (void*) &(layer.stride));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.size), (void*) &(layer.size));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.pad), (void*) &(layer.pad));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.delta_gpu.memory), (void*) &(layer.delta_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.delta_gpu.offset), (void*) &(layer.delta_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.delta_gpu.memory), (void*) &(net.delta_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(net.delta_gpu.offset), (void*) &(net.delta_gpu.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.indexes_gpu.memory), (void*) &(layer.indexes_gpu.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(layer.indexes_gpu.offset), (void*) &(layer.indexes_gpu.offset));
+    cl_check_error(cl);
+
+    const size_t gsize[] = {cl_global_size(n,BLOCK)};
+    const size_t localws[] = {BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
+
+#endif // OPENCL
 

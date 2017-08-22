@@ -1,14 +1,18 @@
+//OPENCL done
 #include "layer.h"
 #include "cuda.h"
-
+#include "openclutils.h"
 #include <stdlib.h>
 
 void free_layer(layer l)
 {
-    if(l.type == DROPOUT){
+    if(l.type == DROPOUT)
+    {
         if(l.rand)           free(l.rand);
-#ifdef GPU
+#ifdef CUDA
         if(l.rand_gpu)             cuda_free(l.rand_gpu);
+#elif defined OPENCL
+        if(l.rand_gpu.exist)             cl_free(l.rand_gpu);
 #endif
         return;
     }
@@ -53,7 +57,7 @@ void free_layer(layer l)
     if(l.h_cpu)              free(l.h_cpu);
     if(l.binary_input)       free(l.binary_input);
 
-#ifdef GPU
+#ifdef CUDA
     if(l.indexes_gpu)           cuda_free((float *)l.indexes_gpu);
 
     if(l.z_gpu)                   cuda_free(l.z_gpu);
@@ -93,5 +97,46 @@ void free_layer(layer l)
     if(l.rand_gpu)                cuda_free(l.rand_gpu);
     if(l.squared_gpu)             cuda_free(l.squared_gpu);
     if(l.norms_gpu)               cuda_free(l.norms_gpu);
+#endif
+#ifdef OPENCL
+    if(l.indexes_gpu.exist)           cl_free(l.indexes_gpu);
+
+    if(l.z_gpu.exist)                   cl_free(l.z_gpu);
+    if(l.r_gpu.exist)                   cl_free(l.r_gpu);
+    if(l.h_gpu.exist)                   cl_free(l.h_gpu);
+    if(l.m_gpu.exist)                   cl_free(l.m_gpu);
+    if(l.v_gpu.exist)                   cl_free(l.v_gpu);
+    if(l.prev_state_gpu.exist)          cl_free(l.prev_state_gpu);
+    if(l.forgot_state_gpu.exist)        cl_free(l.forgot_state_gpu);
+    if(l.forgot_delta_gpu.exist)        cl_free(l.forgot_delta_gpu);
+    if(l.state_gpu.exist)               cl_free(l.state_gpu);
+    if(l.state_delta_gpu.exist)         cl_free(l.state_delta_gpu);
+    if(l.gate_gpu.exist)                cl_free(l.gate_gpu);
+    if(l.gate_delta_gpu.exist)          cl_free(l.gate_delta_gpu);
+    if(l.save_gpu.exist)                cl_free(l.save_gpu);
+    if(l.save_delta_gpu.exist)          cl_free(l.save_delta_gpu);
+    if(l.concat_gpu.exist)              cl_free(l.concat_gpu);
+    if(l.concat_delta_gpu.exist)        cl_free(l.concat_delta_gpu);
+    if(l.binary_input_gpu.exist)        cl_free(l.binary_input_gpu);
+    if(l.binary_weights_gpu.exist)      cl_free(l.binary_weights_gpu);
+    if(l.mean_gpu.exist)                cl_free(l.mean_gpu);
+    if(l.variance_gpu.exist)            cl_free(l.variance_gpu);
+    if(l.rolling_mean_gpu.exist)        cl_free(l.rolling_mean_gpu);
+    if(l.rolling_variance_gpu.exist)    cl_free(l.rolling_variance_gpu);
+    if(l.variance_delta_gpu.exist)      cl_free(l.variance_delta_gpu);
+    if(l.mean_delta_gpu.exist)          cl_free(l.mean_delta_gpu);
+    if(l.x_gpu.exist)                   cl_free(l.x_gpu);
+    if(l.x_norm_gpu.exist)              cl_free(l.x_norm_gpu);
+    if(l.weights_gpu.exist)             cl_free(l.weights_gpu);
+    if(l.weight_updates_gpu.exist)      cl_free(l.weight_updates_gpu);
+    if(l.biases_gpu.exist)              cl_free(l.biases_gpu);
+    if(l.bias_updates_gpu.exist)        cl_free(l.bias_updates_gpu);
+    if(l.scales_gpu.exist)              cl_free(l.scales_gpu);
+    if(l.scale_updates_gpu.exist)       cl_free(l.scale_updates_gpu);
+    if(l.output_gpu.exist)              cl_free(l.output_gpu);
+    if(l.delta_gpu.exist)               cl_free(l.delta_gpu);
+    if(l.rand_gpu.exist)                cl_free(l.rand_gpu);
+    if(l.squared_gpu.exist)             cl_free(l.squared_gpu);
+    if(l.norms_gpu.exist)               cl_free(l.norms_gpu);
 #endif
 }

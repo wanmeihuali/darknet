@@ -1,3 +1,4 @@
+//OPENCL done
 #ifndef DARKNET_API
 #define DARKNET_API
 #include <stdlib.h>
@@ -8,37 +9,45 @@
 #define SECRET_NUM -1234
 extern int gpu_index;
 
-#ifdef GPU
-    #define BLOCK 512
+#ifdef CUDA
+#define BLOCK 512
 
-    #include "cuda_runtime.h"
-    #include "curand.h"
-    #include "cublas_v2.h"
+#include "cuda_runtime.h"
+#include "curand.h"
+#include "cublas_v2.h"
 
-    #ifdef CUDNN
-    #include "cudnn.h"
-    #endif
+#ifdef CUDNN
+#include "cudnn.h"
+#endif
+#endif
+
+#ifdef OPENCL
+
+#include "openclutils.h"
+
 #endif
 
 #ifndef __cplusplus
-    #ifdef OPENCV
-    #include "opencv2/highgui/highgui_c.h"
-    #include "opencv2/imgproc/imgproc_c.h"
-    #include "opencv2/core/version.hpp"
-    #if CV_MAJOR_VERSION == 3
-    #include "opencv2/videoio/videoio_c.h"
-    #endif
-    #endif
+#ifdef OPENCV
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/imgproc/imgproc_c.h"
+#include "opencv2/core/version.hpp"
+#if CV_MAJOR_VERSION == 3
+#include "opencv2/videoio/videoio_c.h"
+#endif
+#endif
 #endif
 
-typedef struct{
+typedef struct
+{
     int classes;
     char **names;
 } metadata;
 
 metadata get_metadata(char *file);
 
-typedef struct{
+typedef struct
+{
     int *leaf;
     int n;
     int *parent;
@@ -51,11 +60,13 @@ typedef struct{
     int *group_offset;
 } tree;
 
-typedef enum{
+typedef enum
+{
     LOGISTIC, RELU, RELIE, LINEAR, RAMP, TANH, PLSE, LEAKY, ELU, LOGGY, STAIR, HARDTAN, LHTAN
 } ACTIVATION;
 
-typedef enum {
+typedef enum
+{
     CONVOLUTIONAL,
     DECONVOLUTIONAL,
     CONNECTED,
@@ -83,11 +94,13 @@ typedef enum {
     BLANK
 } LAYER_TYPE;
 
-typedef enum{
+typedef enum
+{
     SSE, MASKED, L1, SEG, SMOOTH
 } COST_TYPE;
 
-typedef struct{
+typedef struct
+{
     int batch;
     float learning_rate;
     float momentum;
@@ -105,7 +118,8 @@ typedef struct network network;
 struct layer;
 typedef struct layer layer;
 
-struct layer{
+struct layer
+{
     LAYER_TYPE type;
     ACTIVATION activation;
     COST_TYPE cost_type;
@@ -241,7 +255,7 @@ struct layer{
 
     float * m;
     float * v;
-    
+
     float * bias_m;
     float * bias_v;
     float * scale_m;
@@ -266,7 +280,7 @@ struct layer{
     float *g_cpu;
     float *o_cpu;
     float *c_cpu;
-    float *dc_cpu; 
+    float *dc_cpu;
 
     float * binary_input;
 
@@ -293,7 +307,7 @@ struct layer{
 
     struct layer *input_h_layer;
     struct layer *state_h_layer;
-	
+
     struct layer *wz;
     struct layer *uz;
     struct layer *wr;
@@ -313,7 +327,7 @@ struct layer{
 
     size_t workspace_size;
 
-#ifdef GPU
+#ifdef CUDA
     int *indexes_gpu;
 
     float *z_gpu;
@@ -333,7 +347,7 @@ struct layer{
     float *g_gpu;
     float *o_gpu;
     float *c_gpu;
-    float *dc_gpu; 
+    float *dc_gpu;
 
     float *m_gpu;
     float *v_gpu;
@@ -400,15 +414,94 @@ struct layer{
     cudnnConvolutionBwdFilterAlgo_t bf_algo;
 #endif
 #endif
+
+#ifdef OPENCL
+    cl_mem_with_offset indexes_gpu;
+
+    cl_mem_with_offset z_gpu;
+    cl_mem_with_offset r_gpu;
+    cl_mem_with_offset h_gpu;
+
+    cl_mem_with_offset temp_gpu;
+    cl_mem_with_offset temp2_gpu;
+    cl_mem_with_offset temp3_gpu;
+
+    cl_mem_with_offset dh_gpu;
+    cl_mem_with_offset hh_gpu;
+    cl_mem_with_offset prev_cell_gpu;
+    cl_mem_with_offset cell_gpu;
+    cl_mem_with_offset f_gpu;
+    cl_mem_with_offset i_gpu;
+    cl_mem_with_offset g_gpu;
+    cl_mem_with_offset o_gpu;
+    cl_mem_with_offset c_gpu;
+    cl_mem_with_offset dc_gpu;
+
+    cl_mem_with_offset m_gpu;
+    cl_mem_with_offset v_gpu;
+    cl_mem_with_offset bias_m_gpu;
+    cl_mem_with_offset scale_m_gpu;
+    cl_mem_with_offset bias_v_gpu;
+    cl_mem_with_offset scale_v_gpu;
+
+    cl_mem_with_offset  combine_gpu;
+    cl_mem_with_offset  combine_delta_gpu;
+
+    cl_mem_with_offset  prev_state_gpu;
+    cl_mem_with_offset  forgot_state_gpu;
+    cl_mem_with_offset  forgot_delta_gpu;
+    cl_mem_with_offset  state_gpu;
+    cl_mem_with_offset  state_delta_gpu;
+    cl_mem_with_offset  gate_gpu;
+    cl_mem_with_offset  gate_delta_gpu;
+    cl_mem_with_offset  save_gpu;
+    cl_mem_with_offset  save_delta_gpu;
+    cl_mem_with_offset  concat_gpu;
+    cl_mem_with_offset  concat_delta_gpu;
+
+    cl_mem_with_offset  binary_input_gpu;
+    cl_mem_with_offset  binary_weights_gpu;
+
+    cl_mem_with_offset  mean_gpu;
+    cl_mem_with_offset  variance_gpu;
+
+    cl_mem_with_offset  rolling_mean_gpu;
+    cl_mem_with_offset  rolling_variance_gpu;
+
+    cl_mem_with_offset  variance_delta_gpu;
+    cl_mem_with_offset  mean_delta_gpu;
+
+    cl_mem_with_offset  x_gpu;
+    cl_mem_with_offset  x_norm_gpu;
+    cl_mem_with_offset  weights_gpu;
+    cl_mem_with_offset  weight_updates_gpu;
+    cl_mem_with_offset  weight_change_gpu;
+
+    cl_mem_with_offset  biases_gpu;
+    cl_mem_with_offset  bias_updates_gpu;
+    cl_mem_with_offset  bias_change_gpu;
+
+    cl_mem_with_offset  scales_gpu;
+    cl_mem_with_offset  scale_updates_gpu;
+    cl_mem_with_offset  scale_change_gpu;
+
+    cl_mem_with_offset  output_gpu;
+    cl_mem_with_offset  delta_gpu;
+    cl_mem_with_offset  rand_gpu;
+    cl_mem_with_offset  squared_gpu;
+    cl_mem_with_offset  norms_gpu;
+#endif
 };
 
 void free_layer(layer);
 
-typedef enum {
+typedef enum
+{
     CONSTANT, STEP, EXP, POLY, STEPS, SIG, RANDOM
 } learning_rate_policy;
 
-typedef struct network{
+typedef struct network
+{
     int n;
     int batch;
     size_t *seen;
@@ -463,16 +556,24 @@ typedef struct network{
     int index;
     float *cost;
 
-#ifdef GPU
+#ifdef CUDA
     float *input_gpu;
     float *truth_gpu;
     float *delta_gpu;
     float *output_gpu;
+#elif defined OPENCL
+    cl_mem_with_offset input_gpu;
+    cl_mem_with_offset truth_gpu;
+    cl_mem_with_offset delta_gpu;
+    cl_mem_with_offset output_gpu;
+    cl_mem_with_offset workspace_gpu;
+#else
 #endif
 
 } network;
 
-typedef struct {
+typedef struct
+{
     int w;
     int h;
     float scale;
@@ -482,24 +583,28 @@ typedef struct {
     float aspect;
 } augment_args;
 
-typedef struct {
+typedef struct
+{
     int w;
     int h;
     int c;
     float *data;
 } image;
 
-typedef struct{
+typedef struct
+{
     float x, y, w, h;
 } box;
 
-typedef struct matrix{
+typedef struct matrix
+{
     int rows, cols;
     float **vals;
 } matrix;
 
 
-typedef struct{
+typedef struct
+{
     int w, h;
     matrix X;
     matrix y;
@@ -508,11 +613,13 @@ typedef struct{
     box **boxes;
 } data;
 
-typedef enum {
+typedef enum
+{
     CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA, LETTERBOX_DATA, REGRESSION_DATA, SEGMENTATION_DATA, INSTANCE_DATA
 } data_type;
 
-typedef struct load_args{
+typedef struct load_args
+{
     int threads;
     char **paths;
     char *path;
@@ -545,7 +652,8 @@ typedef struct load_args{
     tree *hierarchy;
 } load_args;
 
-typedef struct{
+typedef struct
+{
     int id;
     float x,y,w,h;
     float left, right, top, bottom;
@@ -558,13 +666,15 @@ load_args get_base_args(network net);
 
 void free_data(data d);
 
-typedef struct node{
+typedef struct node
+{
     void *val;
     struct node *next;
     struct node *prev;
 } node;
 
-typedef struct list{
+typedef struct list
+{
     int size;
     node *front;
     node *back;
@@ -585,7 +695,7 @@ void scal_cpu(int N, float ALPHA, float *X, int INCX);
 void normalize_cpu(float *x, float *mean, float *variance, int batch, int filters, int spatial);
 
 int best_3d_shift_r(image a, image b, int min, int max);
-#ifdef GPU
+#ifdef CUDA
 void axpy_gpu(int N, float ALPHA, float * X, int INCX, float * Y, int INCY);
 void fill_gpu(int N, float ALPHA, float * X, int INCX);
 void scal_gpu(int N, float ALPHA, float * X, int INCX);
@@ -597,6 +707,28 @@ float *cuda_make_array(float *x, size_t n);
 void cuda_pull_array(float *x_gpu, float *x, size_t n);
 float cuda_mag_array(float *x_gpu, size_t n);
 void cuda_push_array(float *x_gpu, float *x, size_t n);
+
+void forward_network_gpu(network net);
+void backward_network_gpu(network net);
+void update_network_gpu(network net);
+
+float train_networks(network *nets, int n, data d, int interval);
+void sync_nets(network *nets, int n, int interval);
+void harmless_update_network_gpu(network net);
+#endif
+
+#ifdef OPENCL
+void axpy_gpu(int N, float ALPHA, cl_mem_with_offset X, int INCX, cl_mem_with_offset Y, int INCY);
+void fill_gpu(int N, float ALPHA, cl_mem_with_offset X, int INCX);
+void scal_gpu(int N, float ALPHA, cl_mem_with_offset X, int INCX);
+void copy_gpu(int N, cl_mem_with_offset X, int INCX, cl_mem_with_offset Y, int INCY);
+
+void cl_set_device(cl_info *cl, int n);
+cl_int cl_free(cl_mem_with_offset x_gpu);
+cl_mem_with_offset cl_make_array(float *x, size_t n);
+void cl_pull_array(cl_mem_with_offset x_gpu, float *x, size_t n);
+float cl_mag_array(cl_mem_with_offset x_gpu, size_t n);
+void cl_push_array(cl_mem_with_offset x_gpu, float *x, size_t n);
 
 void forward_network_gpu(network net);
 void backward_network_gpu(network net);

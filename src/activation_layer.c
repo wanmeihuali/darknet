@@ -1,6 +1,10 @@
+//OPENCL done
 #include "activation_layer.h"
 #include "utils.h"
+
 #include "cuda.h"
+#include "openclutils.h"
+
 #include "blas.h"
 #include "gemm.h"
 
@@ -23,13 +27,22 @@ layer make_activation_layer(int batch, int inputs, ACTIVATION activation)
 
     l.forward = forward_activation_layer;
     l.backward = backward_activation_layer;
-#ifdef GPU
+#ifdef CUDA
     l.forward_gpu = forward_activation_layer_gpu;
     l.backward_gpu = backward_activation_layer_gpu;
 
     l.output_gpu = cuda_make_array(l.output, inputs*batch);
     l.delta_gpu = cuda_make_array(l.delta, inputs*batch);
 #endif
+
+#ifdef OPENCL
+    l.forward_gpu = forward_activation_layer_gpu;
+    l.backward_gpu = backward_activation_layer_gpu;
+
+    l.output_gpu = cl_make_array(l.output, inputs*batch);
+    l.delta_gpu = cl_make_array(l.delta, inputs*batch);
+#endif
+
     l.activation = activation;
     fprintf(stderr, "Activation Layer: %d inputs\n", inputs);
     return l;
@@ -47,7 +60,82 @@ void backward_activation_layer(layer l, network net)
     copy_cpu(l.outputs*l.batch, l.delta, 1, net.delta, 1);
 }
 
-#ifdef GPU
+#ifdef CUDA
+
+void forward_activation_layer_gpu(layer l, network net)
+{
+    copy_gpu(l.outputs*l.batch, net.input_gpu, 1, l.output_gpu, 1);
+    activate_array_gpu(l.output_gpu, l.outputs*l.batch, l.activation);
+}
+
+void backward_activation_layer_gpu(layer l, network net)
+{
+    gradient_array_gpu(l.output_gpu, l.outputs*l.batch, l.activation, l.delta_gpu);
+    copy_gpu(l.outputs*l.batch, l.delta_gpu, 1, net.delta_gpu, 1);
+}
+#endif
+
+#ifdef OPENCL
+
+cl_kernel get_activation_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init){
+        kernel = get_kernel("clKernels/activation_kernels.cl", "activate_array_kernel", "-D BLOCK=" STR(BLOCK));
+        init = 1;
+    }
+    return kernel;
+}
+
+void activate_array_gpu(cl_mem_with_offset x, int n, ACTIVATION a)
+{
+    cl_kernel kernel = get_activation_kernel();
+    cl_command_queue queue = cl.queue;
+
+    cl_uint i = 0;
+    cl.error = clSetKernelArg(kernel, i++, sizeof(x.memory), (void*) &(x.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(x.offset), (void*) &(x.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(a), (void*) &a);
+    cl_check_error(cl);
+
+    size_t gsize[] = {cl_global_size(n, BLOCK)};
+    size_t localws[]={BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
+
+cl_kernel get_gradient_kernel()
+{
+    static int init = 0;
+    static cl_kernel kernel;
+    if(!init){
+        kernel = get_kernel("clKernels/activation_kernels.cl", "gradient_array_kernel", 0);
+        init = 1;
+    }
+    return kernel;
+}
+
+void gradient_array_gpu(cl_mem_with_offset x, int n, ACTIVATION a, cl_mem_with_offset delta)
+{
+    cl_kernel kernel = get_gradient_kernel();
+    cl_command_queue queue = cl.queue;
+
+    cl_uint i = 0;
+    cl.error = clSetKernelArg(kernel, i++, sizeof(x.memory), (void*) &(x.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(x.offset), (void*) &(x.offset));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(n), (void*) &n);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(a), (void*) &a);
+    cl.error = clSetKernelArg(kernel, i++, sizeof(delta.memory), (void*) &(delta.memory));
+    cl.error = clSetKernelArg(kernel, i++, sizeof(delta.offset), (void*) &(delta.offset));
+    cl_check_error(cl);
+
+    size_t gsize[] = {cl_global_size(n, BLOCK)};
+    size_t localws[]={BLOCK};
+    cl.error = clEnqueueNDRangeKernel(queue, kernel, 1, 0, gsize, localws, 0, 0, 0);
+    cl_check_error(cl);
+}
 
 void forward_activation_layer_gpu(layer l, network net)
 {

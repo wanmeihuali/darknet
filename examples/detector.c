@@ -19,8 +19,10 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     int i;
     for(i = 0; i < ngpus; ++i){
         srand(seed);
-#ifdef GPU
+#ifdef CUDA
         cuda_set_device(gpus[i]);
+#elif defined OPENCL
+        cl_set_device(&cl, gpus[i]);
 #endif
         nets[i] = load_network(cfgfile, weightfile, clear);
         nets[i].learning_rate *= ngpus;
@@ -355,7 +357,7 @@ void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
@@ -486,7 +488,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
@@ -630,7 +632,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         else{
             save_image(im, "predictions");
 #ifdef OPENCV
-            cvNamedWindow("predictions", CV_WINDOW_NORMAL); 
+            cvNamedWindow("predictions", CV_WINDOW_NORMAL);
             if(fullscreen){
                 cvSetWindowProperty("predictions", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
             }

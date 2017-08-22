@@ -16,8 +16,10 @@ void train_regressor(char *datacfg, char *cfgfile, char *weightfile, int *gpus, 
     int seed = rand();
     for(i = 0; i < ngpus; ++i){
         srand(seed);
-#ifdef GPU
+#ifdef CUDA
         cuda_set_device(gpus[i]);
+#elif defined OPENCL
+        cl_set_device(&cl, gpus[i]);
 #endif
         nets[i] = parse_network_cfg(cfgfile);
         if(weightfile){
@@ -172,7 +174,7 @@ void demo_regressor(char *datacfg, char *cfgfile, char *weightfile, int cam_inde
     }
 
     if(!cap) error("Couldn't connect to webcam.\n");
-    cvNamedWindow("Regressor", CV_WINDOW_NORMAL); 
+    cvNamedWindow("Regressor", CV_WINDOW_NORMAL);
     cvResizeWindow("Regressor", 512, 512);
     float fps = 0;
 

@@ -1,7 +1,9 @@
-GPU=0
+CUDA=0
 CUDNN=0
-OPENCV=0
+OPENCV=1
 OPENMP=0
+OPENCL=1
+
 DEBUG=0
 
 ARCH= -gencode arch=compute_20,code=[sm_20,sm_21] \
@@ -27,6 +29,8 @@ OPTS=-Ofast
 LDFLAGS= -lm -pthread 
 COMMON= -Iinclude/ -Isrc/
 CFLAGS=-Wall -Wno-unknown-pragmas -Wfatal-errors -fPIC
+CLHEADERDIR=/usr/local/cuda/include
+CLLIBDIR=/usr/local/cuda/lib64
 
 ifeq ($(OPENMP), 1) 
 CFLAGS+= -fopenmp
@@ -45,9 +49,9 @@ LDFLAGS+= `pkg-config --libs opencv`
 COMMON+= `pkg-config --cflags opencv` 
 endif
 
-ifeq ($(GPU), 1) 
-COMMON+= -DGPU -I/usr/local/cuda/include/
-CFLAGS+= -DGPU
+ifeq ($(CUDA), 1) 
+COMMON+= -DCUDA -I/usr/local/cuda/include/
+CFLAGS+= -DCUDA
 LDFLAGS+= -L/usr/local/cuda/lib64 -lcuda -lcudart -lcublas -lcurand
 endif
 
@@ -57,11 +61,21 @@ CFLAGS+= -DCUDNN
 LDFLAGS+= -lcudnn
 endif
 
-OBJ=gemm.o utils.o cuda.o deconvolutional_layer.o convolutional_layer.o list.o image.o activations.o im2col.o col2im.o blas.o crop_layer.o dropout_layer.o maxpool_layer.o softmax_layer.o data.o matrix.o network.o connected_layer.o cost_layer.o parser.o option_list.o detection_layer.o route_layer.o box.o normalization_layer.o avgpool_layer.o layer.o local_layer.o shortcut_layer.o activation_layer.o rnn_layer.o gru_layer.o crnn_layer.o demo.o batchnorm_layer.o region_layer.o reorg_layer.o tree.o  lstm_layer.o
+ifeq ($(OPENCL), 1)
+COMMON+= -DOPENCL -I$(CLHEADERDIR)
+CFLAGS+= -DOPENCL
+LDFLAGS+= -L$(CLLIBDIR) -lOpenCL
+endif
+
+OBJ=gemm.o utils.o openclutils.o cuda.o deconvolutional_layer.o convolutional_layer.o list.o image.o activations.o im2col.o col2im.o blas.o crop_layer.o dropout_layer.o maxpool_layer.o softmax_layer.o data.o matrix.o network.o connected_layer.o cost_layer.o parser.o option_list.o detection_layer.o route_layer.o box.o normalization_layer.o avgpool_layer.o layer.o local_layer.o shortcut_layer.o activation_layer.o rnn_layer.o gru_layer.o crnn_layer.o demo.o batchnorm_layer.o region_layer.o reorg_layer.o tree.o  lstm_layer.o
 EXECOBJA=captcha.o lsd.o super.o voxel.o art.o tag.o cifar.o go.o rnn.o rnn_vid.o compare.o segmenter.o regressor.o classifier.o coco.o dice.o yolo.o detector.o  writing.o nightmare.o swag.o darknet.o 
-ifeq ($(GPU), 1) 
+ifeq ($(CUDA), 1) 
 LDFLAGS+= -lstdc++ 
 OBJ+=convolutional_kernels.o deconvolutional_kernels.o activation_kernels.o im2col_kernels.o col2im_kernels.o blas_kernels.o crop_layer_kernels.o dropout_layer_kernels.o maxpool_layer_kernels.o network_kernels.o avgpool_layer_kernels.o
+endif
+
+ifeq ($(OPENCL), 1) 
+LDFLAGS+= -lstdc++ 
 endif
 
 EXECOBJ = $(addprefix $(OBJDIR), $(EXECOBJA))

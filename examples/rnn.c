@@ -119,9 +119,9 @@ void train_char_rnn(char *cfgfile, char *weightfile, char *filename, int clear, 
     } else {
         FILE *fp = fopen(filename, "rb");
 
-        fseek(fp, 0, SEEK_END); 
+        fseek(fp, 0, SEEK_END);
         size = ftell(fp);
-        fseek(fp, 0, SEEK_SET); 
+        fseek(fp, 0, SEEK_SET);
 
         text = calloc(size+1, sizeof(char));
         fread(text, 1, size, fp);
@@ -487,8 +487,10 @@ void vec_char_rnn(char *cfgfile, char *weightfile, char *seed)
         input[(int)c] = 0;
 
         layer l = net.layers[0];
-        #ifdef GPU
+        #ifdef CUDA
         cuda_pull_array(l.output_gpu, l.output, l.outputs);
+        #elif defined OPENCL
+        cl_read_array(l.output_gpu, l.output, l.outputs);
         #endif
         printf("%s", line);
         for(i = 0; i < l.outputs; ++i){

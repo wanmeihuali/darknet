@@ -2,6 +2,7 @@
 #include "connected_layer.h"
 #include "utils.h"
 #include "cuda.h"
+#include "openclutils.h"
 #include "blas.h"
 #include "gemm.h"
 
@@ -18,11 +19,16 @@ static void increment_layer(layer *l, int steps)
     l->x += num;
     l->x_norm += num;
 
-#ifdef GPU
+#ifdef CUDA
     l->output_gpu += num;
     l->delta_gpu += num;
     l->x_gpu += num;
     l->x_norm_gpu += num;
+#elif defined OPENCL
+    l->output_gpu.offset += num;
+    l->delta_gpu.offset += num;
+    l->x_gpu.offset += num;
+    l->x_norm_gpu.offset += num;
 #endif
 }
 
@@ -61,7 +67,7 @@ layer make_rnn_layer(int batch, int inputs, int outputs, int steps, ACTIVATION a
     l.forward = forward_rnn_layer;
     l.backward = backward_rnn_layer;
     l.update = update_rnn_layer;
-#ifdef GPU
+#ifdef CUDA
     l.forward_gpu = forward_rnn_layer_gpu;
     l.backward_gpu = backward_rnn_layer_gpu;
     l.update_gpu = update_rnn_layer_gpu;
@@ -70,10 +76,18 @@ layer make_rnn_layer(int batch, int inputs, int outputs, int steps, ACTIVATION a
     l.output_gpu = l.output_layer->output_gpu;
     l.delta_gpu = l.output_layer->delta_gpu;
 #ifdef CUDNN
-    cudnnSetTensor4dDescriptor(l.input_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.input_layer->out_c, l.input_layer->out_h, l.input_layer->out_w); 
-    cudnnSetTensor4dDescriptor(l.self_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.self_layer->out_c, l.self_layer->out_h, l.self_layer->out_w); 
-    cudnnSetTensor4dDescriptor(l.output_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.output_layer->out_c, l.output_layer->out_h, l.output_layer->out_w); 
+    cudnnSetTensor4dDescriptor(l.input_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.input_layer->out_c, l.input_layer->out_h, l.input_layer->out_w);
+    cudnnSetTensor4dDescriptor(l.self_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.self_layer->out_c, l.self_layer->out_h, l.self_layer->out_w);
+    cudnnSetTensor4dDescriptor(l.output_layer->dstTensorDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, l.output_layer->out_c, l.output_layer->out_h, l.output_layer->out_w);
 #endif
+#elif defined OPENCL
+    l.forward_gpu = forward_rnn_layer_gpu;
+    l.backward_gpu = backward_rnn_layer_gpu;
+    l.update_gpu = update_rnn_layer_gpu;
+    l.state_gpu = cl_make_array(0, batch*outputs);
+    l.prev_state_gpu = cl_make_array(0, batch*outputs);
+    l.output_gpu = l.output_layer->output_gpu;
+    l.delta_gpu = l.output_layer->delta_gpu;
 #endif
 
     return l;
@@ -100,7 +114,8 @@ void forward_rnn_layer(layer l, network net)
     fill_cpu(l.outputs * l.batch * l.steps, 0, input_layer.delta, 1);
     if(net.train) fill_cpu(l.outputs * l.batch, 0, l.state, 1);
 
-    for (i = 0; i < l.steps; ++i) {
+    for (i = 0; i < l.steps; ++i)
+    {
         s.input = net.input;
         forward_connected_layer(input_layer, s);
 
@@ -109,9 +124,12 @@ void forward_rnn_layer(layer l, network net)
 
         float *old_state = l.state;
         if(net.train) l.state += l.outputs*l.batch;
-        if(l.shortcut){
+        if(l.shortcut)
+        {
             copy_cpu(l.outputs * l.batch, old_state, 1, l.state, 1);
-        }else{
+        }
+        else
+        {
             fill_cpu(l.outputs * l.batch, 0, l.state, 1);
         }
         axpy_cpu(l.outputs * l.batch, 1, input_layer.output, 1, l.state, 1);
@@ -141,7 +159,8 @@ void backward_rnn_layer(layer l, network net)
     increment_layer(&output_layer, l.steps-1);
 
     l.state += l.outputs*l.batch*l.steps;
-    for (i = l.steps-1; i >= 0; --i) {
+    for (i = l.steps-1; i >= 0; --i)
+    {
         copy_cpu(l.outputs * l.batch, input_layer.output, 1, l.state, 1);
         axpy_cpu(l.outputs * l.batch, 1, self_layer.output, 1, l.state, 1);
 
@@ -213,12 +232,14 @@ void forward_rnn_layer_gpu(layer l, network net)
     fill_gpu(l.outputs * l.batch * l.steps, 0, self_layer.delta_gpu, 1);
     fill_gpu(l.outputs * l.batch * l.steps, 0, input_layer.delta_gpu, 1);
 
-    if(net.train) {
+    if(net.train)
+    {
         fill_gpu(l.outputs * l.batch * l.steps, 0, l.delta_gpu, 1);
         copy_gpu(l.outputs*l.batch, l.state_gpu, 1, l.prev_state_gpu, 1);
     }
 
-    for (i = 0; i < l.steps; ++i) {
+    for (i = 0; i < l.steps; ++i)
+    {
         s.input_gpu = net.input_gpu;
         forward_connected_layer_gpu(input_layer, s);
 
@@ -231,8 +252,11 @@ void forward_rnn_layer_gpu(layer l, network net)
 
         s.input_gpu = l.state_gpu;
         forward_connected_layer_gpu(output_layer, s);
-
+#ifdef CUDA
         net.input_gpu += l.inputs*l.batch;
+#elif defined OPENCL
+        net.input_gpu.offset += l.inputs*l.batch;
+#endif
         increment_layer(&input_layer, 1);
         increment_layer(&self_layer, 1);
         increment_layer(&output_layer, 1);
@@ -250,9 +274,15 @@ void backward_rnn_layer_gpu(layer l, network net)
     increment_layer(&input_layer,  l.steps - 1);
     increment_layer(&self_layer,   l.steps - 1);
     increment_layer(&output_layer, l.steps - 1);
+#ifdef CUDA
     float *last_input = input_layer.output_gpu;
     float *last_self = self_layer.output_gpu;
-    for (i = l.steps-1; i >= 0; --i) {
+#elif defined OPENCL
+    cl_mem_with_offset last_input = input_layer.output_gpu;
+    cl_mem_with_offset last_self = self_layer.output_gpu;
+#endif
+    for (i = l.steps-1; i >= 0; --i)
+    {
         fill_gpu(l.outputs * l.batch, 0, l.state_gpu, 1);
         axpy_gpu(l.outputs * l.batch, 1, input_layer.output_gpu, 1, l.state_gpu, 1);
         axpy_gpu(l.outputs * l.batch, 1, self_layer.output_gpu, 1, l.state_gpu, 1);
@@ -261,24 +291,55 @@ void backward_rnn_layer_gpu(layer l, network net)
         s.delta_gpu = self_layer.delta_gpu;
         backward_connected_layer_gpu(output_layer, s);
 
-        if(i != 0) {
+        if(i != 0)
+        {
             fill_gpu(l.outputs * l.batch, 0, l.state_gpu, 1);
+#ifdef CUDA
             axpy_gpu(l.outputs * l.batch, 1, input_layer.output_gpu - l.outputs*l.batch, 1, l.state_gpu, 1);
             axpy_gpu(l.outputs * l.batch, 1, self_layer.output_gpu - l.outputs*l.batch, 1, l.state_gpu, 1);
-        }else {
+#elif defined OPENCL
+            input_layer.output_gpu.offset -= l.outputs*l.batch;
+            self_layer.output_gpu.offset -= l.outputs*l.batch;
+            axpy_gpu(l.outputs * l.batch, 1, input_layer.output_gpu, 1, l.state_gpu, 1);
+            axpy_gpu(l.outputs * l.batch, 1, self_layer.output_gpu, 1, l.state_gpu, 1);
+            input_layer.output_gpu.offset += l.outputs*l.batch;
+            self_layer.output_gpu.offset += l.outputs*l.batch;
+#endif
+        }
+        else
+        {
             copy_gpu(l.outputs*l.batch, l.prev_state_gpu, 1, l.state_gpu, 1);
         }
 
         copy_gpu(l.outputs*l.batch, self_layer.delta_gpu, 1, input_layer.delta_gpu, 1);
 
         s.input_gpu = l.state_gpu;
+#ifdef CUDA
         s.delta_gpu = (i > 0) ? self_layer.delta_gpu - l.outputs*l.batch : 0;
         if (i == 0) s.delta_gpu = 0;
+#elif defined OPENCL
+        if (i > 0) {
+            s.delta_gpu = self_layer.delta_gpu;
+            s.delta_gpu.offset -= l.outputs*l.batch;
+        } else {
+            s.delta_gpu.exist = false;
+        }
+        if (i == 0) s.delta_gpu.exist = false;
+#endif
         backward_connected_layer_gpu(self_layer, s);
-
+#ifdef CUDA
         s.input_gpu = net.input_gpu + i*l.inputs*l.batch;
         if(net.delta_gpu) s.delta_gpu = net.delta_gpu + i*l.inputs*l.batch;
         else s.delta_gpu = 0;
+#elif defined OPENCL
+        s.input_gpu = net.input_gpu;
+        s.input_gpu.offset += i*l.inputs*l.batch;
+        if(net.delta_gpu.exist) {
+            s.delta_gpu = net.delta_gpu;
+            s.delta_gpu.offset += i*l.inputs*l.batch;
+        }
+        else s.delta_gpu.exist = false;
+#endif
         backward_connected_layer_gpu(input_layer, s);
 
         increment_layer(&input_layer,  -1);

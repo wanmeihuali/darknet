@@ -4,6 +4,8 @@
 #include "image.h"
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 layer make_batchnorm_layer(int batch, int w, int h, int c);
 void forward_batchnorm_layer(layer l, network net);

@@ -2,6 +2,8 @@
 #define COST_LAYER_H
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 typedef layer cost_layer;
 

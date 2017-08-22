@@ -2,6 +2,8 @@
 #define SOFTMAX_LAYER_H
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 typedef layer softmax_layer;
 

@@ -4,6 +4,8 @@
 #include "image.h"
 #include "layer.h"
 #include "network.h"
+#include "cuda.h"
+#include "openclutils.h"
 
 typedef layer crop_layer;
 
